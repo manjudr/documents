@@ -79,25 +79,49 @@ graph LR
 
 ### The content catalog
 
-**Who publishes:** external organisations — state agriculture departments, ICAR, scheme-owning bodies. They register for an account and are approved as an organisation.
+**Who publishes.** External organisations — state agriculture departments, ICAR, scheme-owning bodies. They register, an admin approves the account, and they get a login.
 
-**What they publish:**
-- Scheme listings — name, who's eligible, what the benefit is, how to apply
-- Advisory content — crop guidance, farming practice articles
-- Videos
-- Scholarship listings
+**The four ways to publish content.** All four write to the same place. They differ only in what you hand over:
 
-**How they publish it:** they log in and either fill in a form for a single item, or upload a spreadsheet to load hundreds at once. The spreadsheet has a fixed set of columns they must match.
+| Route | You send | Notes |
+|---|---|---|
+| `POST /provider/content` | one item as JSON | the normal path |
+| `POST /provider/createBulkContent` | a **CSV file** | bulk load — the spreadsheet version of the above |
+| `POST /provider/createBulkContent1` | a JSON array | same job as the CSV route, different input format |
+| `POST /provider/icarcontent` | one item, scheme-shaped | adds scheme fields like eligibility and benefits |
 
-**Who approves it:** *nobody, at the item level.* An admin approves the **organisation** once. From that moment, anything that organisation uploads goes live immediately — there is no review queue, no second pair of eyes on individual content.
+Two of those four are the same operation with different wrappers. There is no reason a publisher needs to know which to pick beyond "do I have a file or not."
 
-**Where it lands:** a single content table in a standard database, reached only through a GraphQL layer.
+**Scholarships are separate.** `POST /provider/scholarship` has its own 23-field shape — amount, deadline, eligibility, selection criteria, contact — and its own table. It is not content.
 
-Alongside it sit two small account tables. A **User** row holds the login, role and approval state. A **Provider** row holds the organisation itself — and it holds only four fields: an id, a link to the user, the organisation name, and a source code. Published content links back to the user, so every row knows which organisation put it there.
+**Supporting routes:** `POST /provider/collection` and `/contentCollection` group items together; `POST /provider/uploadImage` uploads a thumbnail. Edit and delete variants exist for each.
 
-That is the entire notion of a provider: enough to say "this login belongs to ICAR", and nothing more. There is no contact detail, no endpoint, no signing key, no domain — nothing a network would need to treat the organisation as a participant rather than an account holder.
+**What actually gets published.** Not the content itself — a *pointer* to it:
 
-And there is **no catalog or item structure at all**. When a search arrives, the Beckn-shaped catalog is assembled on the fly from flat content rows.
+| Type | What the node receives | What the node keeps |
+|---|---|---|
+| Advisory article | title, description, category, language, **link** | metadata + link |
+| PDF | same | metadata + link — **the file stays on the publisher's server** |
+| Video | same | metadata + link |
+| Scheme listing | scheme fields + link | fields + link |
+
+Only thumbnails are genuinely uploaded. Everything else is a URL, and **nothing checks those URLs.** If a department deletes a PDF, the node keeps advertising it and the farmer gets a dead link.
+
+**Nobody publishes in Beckn format.** Publishers send flat fields. Nothing they touch resembles Beckn structure.
+
+**Nothing is stored in Beckn format either.** The database holds flat rows.
+
+**Beckn exists only in the response.** When a search arrives, the node converts flat rows into a Beckn catalog on the spot. And it does this with **separate converters per category** — one for ICAR schemes, one for PM-Kisan, another for foundational-literacy content, with the mandi and weather services building their catalogs inline themselves. There is no shared mapper.
+
+> This is the single most important fact for the re-architecture: **there is no Beckn data model to migrate.** There is flat content plus scattered translation code. You would be building the model, not moving it.
+
+**Who approves it.** *Nobody, at the item level.* An admin approves the **organisation** once. After that, everything it publishes goes live on insertion. No review queue, no second pair of eyes.
+
+**Where it lands.** A content table in a standard database, reached only through a GraphQL layer. In practice there are several content-ish tables — a main one, a second one with nearly the same purpose, and one for foundational-literacy material — plus a separate scholarship table.
+
+**Who the publisher is, as far as the system knows.** A **User** row holds the login, role and approval state. A **Provider** row holds the organisation — and only four fields: an id, a link to the user, the organisation name, and a source code. Content links back by user, so every row knows who published it.
+
+That is the whole notion of a provider. No contact detail, no endpoint, no signing key, no domain — enough to say "this login belongs to ICAR" and nothing a network would need to treat it as a participant.
 
 ### The knowledge catalog
 
@@ -111,22 +135,43 @@ And there is **no catalog or item structure at all**. When a search arrives, the
 
 **Where it lands:** a vector database for the passages, plus a summary list of available schemes that is cached separately. That cache is what lets a newly-added scheme become searchable **without redeploying the assistant**.
 
-### The two publish paths side by side
+### The whole publish picture
 
 ```mermaid
 graph LR
-  Dept["Agriculture dept /<br/>ICAR / scheme owner"] -->|"form or spreadsheet"| Portal["Provider portal"]
-  Portal -->|"live immediately,<br/>no item review"| DB[("Content table")]
-  Admin["Admin"] -.->|"approves the ORGANISATION,<br/>not the content"| Portal
+  Dept["Agriculture dept /<br/>ICAR / scheme owner"]
+  Dept --> E1["POST /provider/content<br/>one item"]
+  Dept --> E2["POST /provider/createBulkContent<br/>CSV file"]
+  Dept --> E3["POST /provider/createBulkContent1<br/>JSON array"]
+  Dept --> E4["POST /provider/icarcontent<br/>scheme-shaped"]
+  Dept --> E5["POST /provider/scholarship"]
 
-  Team["Internal content team"] -->|"upload PDF"| Pipe["Processing pipeline<br/>splits + indexes by meaning"]
+  E1 --> GQL["GraphQL layer"]
+  E2 --> GQL
+  E3 --> GQL
+  E4 --> GQL
+  E5 --> GQL
+
+  Admin["Admin"] -.->|"approves the ORGANISATION once,<br/>never the content"| Dept
+
+  GQL -->|"flat rows, live on insert"| DB[("Content tables")]
+  GQL --> SCH[("Scholarship table")]
+  GQL --> ACC[("User + Provider<br/>account records")]
+
+  DB -.->|"converted ONLY at search time,<br/>by per-category code"| BK["Beckn catalog<br/>in the response"]
+
+  Team["Internal content team"] -->|"real file upload"| Pipe["Processing pipeline<br/>splits + indexes by meaning"]
   Pipe --> Rev{"Reviewer<br/>approves"}
   Rev --> Sup{"Superadmin<br/>promotes"}
   Sup --> VDB[("Vector database")]
   Sup --> Cache[("Cached scheme list")]
 ```
 
-Note the asymmetry: the **externally published** catalog gets no item-level review, while the **internally published** one requires two human approvals.
+**Three things to read off this diagram:**
+
+1. **The two paths have opposite trust models.** External publishers get no item review; the internal team requires two approvals. The content strangers publish is checked less than the content staff publish.
+2. **Beckn appears only on the dotted line** — at search time, in code. It is never a publish format and never a storage format.
+3. **Only the internal path uploads real files.** Everything on the external path is a link to somebody else's server.
 
 ### Live data — nothing to publish
 
