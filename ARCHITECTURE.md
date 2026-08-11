@@ -62,40 +62,9 @@ Every answer a farmer gets comes from one of three places. Two of them are catal
 
 The two catalogs have **different publishers, different approval rules, different storage and completely different search mechanics.** A request to "add a new scheme to the catalog" means two different jobs depending on which one is meant.
 
-**Why live data isn't a catalog:** nothing is published into it and no answer is kept — today's tomato price exists only for the length of one request. What *is* stored is the **market and station master data** behind it: which markets exist and where their boundaries fall, which weather stations exist and where. So it's a live proxy with a geospatial lookup in front.
+**Why live data isn't a catalog:** nothing is published into it and no answer is kept — today's tomato price exists only for the length of one request. What *is* stored is the **market and station master data** behind it: which markets exist and where their boundaries fall, which weather stations exist and where. It is a live proxy with a geospatial lookup in front; the full path is traced in §4.
 
-```mermaid
-graph LR
-  Q["Farmer: 'tomato rate<br/>in Nashik today?'"] --> AI["AI assistant —<br/>LLM picks a tool"]
-  AI -->|"search_commodity —<br/>bundled file, no network"| CC[("commodity codes<br/>ON THE ASSISTANT")]
-  AI -->|"get_mandi_prices —<br/>Beckn, labelled<br/>price-discovery"| N["Provider node"]
-  N -->|"1 — lat/lon →<br/>point-in-polygon"| R[("Market &amp; station master data<br/>GEOSPATIAL — markets, district<br/>codes, boundaries; weather<br/>stations and coordinates")]
-  R -->|"districtcode,<br/>marketcode"| N
-  N -->|"2 — live, per request"| E["Agmarknet<br/>IMD / Mausamgram"]
-  E --> A["Answer —<br/>nothing is stored"]
-```
-
-**Two different lookups, in two different systems.** This is the part that gets missed:
-
-| Resolving | Where | How |
-|---|---|---|
-| "tomato" → `commoditycode` | **the assistant** | fuzzy match against a bundled JSON file |
-| location → `marketcode`, `districtcode`, station id | **the node** | geospatial query — `get_markets_at_point`, `find_nearby_stations` |
-
-The node **never looks up a commodity.** It receives `commoditycode` as a request parameter and passes it straight through to Agmarknet. So a wrong commodity match on the assistant side reaches the government API unchallenged.
-
-**Which of the two live services is called is decided the same way as everything else — by tool choice.** `get_mandi_prices` and `weather_forecast` post to the same address; only the label differs, and the node's switch does the rest (§4). Weather takes the identical shape: resolve the station from coordinates, then call IMD or Mausamgram live.
-
-**What is stored, and what isn't:**
-
-| Stored — slow-changing | Never stored — fetched per request |
-|---|---|
-| Markets, their district codes and geographic boundaries | Today's mandi prices |
-| Weather stations and their coordinates | Any forecast |
-
-**Why the step exists at all.** The government APIs don't accept "Nashik" or a latitude and longitude — they want a `districtcode` and `marketcode`, or a specific station id. The master data performs that translation, by point-in-polygon for markets and distance ordering for stations. It lives in its own database, separate from the content tables, and is loaded and maintained outside the publish APIs entirely — **no publisher can touch it, and no API exposes it.**
-
-This matters for the redesign: catalogs can be published and cached, live data cannot — but **the master data in front of it is neither**, and today has no owner in the publishing model.
+This matters for the redesign: catalogs can be published and cached, live data cannot — but **the master data in front of it is neither.** Nothing publishes it, no API exposes it, and it has no owner in the publishing model at all.
 
 **A note on scope.** These three cover every answer to a *general* question. They do not cover questions about a specific farmer — "has my PM-Kisan payment arrived?" — which are answered by a fourth path: a live, OTP-authenticated query against a government system, holding no data of its own. That path is §10.
 
@@ -193,7 +162,11 @@ Supporting routes not shown: `/provider/collection` and `/contentCollection` gro
 
 ### Live data — nothing to publish
 
-Nobody publishes mandi prices or weather forecasts. What *is* maintained is the reference data behind them — the list of markets, weather stations and commodities used to work out which mandi or station a farmer's location maps to. That list is loaded and kept in a database. The prices and forecasts themselves are fetched per request and never stored.
+Nobody publishes mandi prices or weather forecasts, and **no publish route touches this path at all.**
+
+What *is* maintained is the market and station master data behind it — which markets exist and where their boundaries fall, which weather stations exist and where — used to turn a farmer's location into the codes the government APIs demand. It is loaded and kept in its own database, separate from the content tables, outside every API on this page. The prices and forecasts themselves are fetched per request and never stored.
+
+So it appears in a publish section only to record that **it has no publisher.** How it is actually used at query time is traced in §4.
 
 ---
 
@@ -290,6 +263,34 @@ Two things follow, both of which matter for the redesign:
 - **Adding a data source means editing that list and shipping a release.** There is no way for a new source to announce itself.
 
 **One inconsistency to note.** The node matches some labels on the descriptor's *name* and others on its *code*, and the two are checked with different case rules. Three labels also do not go where their names suggest: `schemes-agri` reaches the PM-Kisan handler, `icar-schemes` reaches the general content database, and the weather tool sends the name `Weather-Forecast-Mausamgram` alongside an unrelated code. Matching works today by coincidence of convention, not by design.
+
+### The live path in full — how a price actually gets fetched
+
+The two levels above decide *which* service answers. This is what one of them then does. Mandi is the clearest case, and weather is the same shape.
+
+```mermaid
+graph LR
+  Q["Farmer: 'tomato rate<br/>in Nashik today?'"] --> AI["AI assistant —<br/>LLM picks a tool"]
+  AI -->|"search_commodity —<br/>bundled file, no network"| CC[("commodity codes<br/>ON THE ASSISTANT")]
+  AI -->|"get_mandi_prices —<br/>Beckn, labelled<br/>price-discovery"| N["Provider node"]
+  N -->|"1 — lat/lon →<br/>point-in-polygon"| R[("Market &amp; station master data<br/>GEOSPATIAL — markets, district<br/>codes, boundaries; weather<br/>stations and coordinates")]
+  R -->|"districtcode,<br/>marketcode"| N
+  N -->|"2 — live, per request"| E["Agmarknet<br/>IMD / Mausamgram"]
+  E --> A["Answer —<br/>nothing is stored"]
+```
+
+**Two different lookups, in two different systems.** This is the part that gets missed:
+
+| Resolving | Where | How |
+|---|---|---|
+| "tomato" → `commoditycode` | **the assistant** | fuzzy match against a bundled JSON file |
+| location → `marketcode`, `districtcode`, station id | **the node** | geospatial query — `get_markets_at_point`, `find_nearby_stations` |
+
+The node **never looks up a commodity.** It receives `commoditycode` as a request parameter and passes it straight through to Agmarknet. So a wrong commodity match on the assistant side reaches the government API unchallenged.
+
+**Why the location step exists at all.** The government APIs don't accept "Nashik" or a latitude and longitude — they want a `districtcode` and `marketcode`, or a specific station id. The master data performs that translation, by point-in-polygon for markets and distance ordering for stations. It sits in its own database, separate from the content tables, loaded and maintained outside the publish APIs entirely — no publisher can touch it and no API exposes it.
+
+**Weather is identical in shape:** resolve the station from coordinates, then call IMD or Mausamgram live. Same address, same node, different label — the switch does the rest. Nothing from either call is stored.
 
 ### Why neither level counts as discovery
 
