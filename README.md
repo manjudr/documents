@@ -31,4 +31,4 @@ If you are reading it locally and see raw code instead of diagrams, your viewer 
 ## Status
 
 Traced 2026-08-11. Claims are marked ✅ verified (read in code, with `file:line`),
-⚠️ inferred, or ❌ not traced — see §11 for known blind spots.
+⚠️ inferred, or ❌ not traced — see §10 for known blind spots.

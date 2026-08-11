@@ -109,7 +109,7 @@ And transactions route on a **completely different key** (`order.provider.id`) t
 | A **registry** — who is on the network | none |
 | A **gateway** — multicast the search to them | none |
 | **`/on_search`** — providers reply asynchronously | none; it's one blocking HTTP call |
-| **Signing** | not observed |
+| **Signing** | none — verified absent, not delegated elsewhere |
 
 The **message format** is Beckn. The **network** is not. It's a client and a server that were built together and hardcoded to match.
 
