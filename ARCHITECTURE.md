@@ -142,19 +142,22 @@ That is the whole notion of a provider. No contact detail, no endpoint, no signi
 
 ```mermaid
 graph LR
-  D["Dept / ICAR<br/>EXTERNAL"] -->|"4 content routes<br/>+ scholarship"| G["GraphQL"]
-  G --> DB[("Flat rows<br/>live on insert")]
+  D["Dept / ICAR<br/>EXTERNAL"] -->|"POST /provider/content<br/>/createBulkContent (CSV)<br/>/createBulkContent1 (JSON)<br/>/icarcontent<br/>/scholarship"| G["GraphQL"]
+  G --> DB[("Flat rows —<br/>live on insert")]
   DB -.->|"converted ONLY<br/>at search time"| B["Beckn catalog<br/>in the response"]
 
-  T["Content team<br/>INTERNAL"] -->|"real file upload"| P["Pipeline"]
+  T["Content team<br/>INTERNAL"] -->|"NO API —<br/>real file upload"| P["Pipeline"]
   P --> R{"Reviewer"} --> S{"Superadmin"} --> V[("Vector DB")]
 ```
 
-**Three things to read off this:**
+Supporting routes not shown: `/provider/collection` and `/contentCollection` group items; `/provider/uploadImage` handles thumbnails. Each has edit and delete variants.
 
-1. **The two paths have opposite trust models.** The content strangers publish is checked less than the content staff publish.
-2. **Beckn appears only at search time**, in code. Never a publish format, never a storage format.
-3. **Only the internal path uploads real files.** Everything external is a link to somebody else's server.
+**Four things to read off this:**
+
+1. **Only one path has an API.** Everything external arrives over HTTP; the internal knowledge path has no endpoint at all — a human starts it. There is no way to publish a reviewed document programmatically.
+2. **The two paths have opposite trust models.** The content strangers publish is checked less than the content staff publish — external rows go live on insert, internal ones need two human approvals.
+3. **Beckn appears only at search time**, in code. Never a publish format, never a storage format.
+4. **Only the internal path uploads real files.** Everything external is a link to somebody else's server, and nothing ever checks those links.
 
 ### Live data — nothing to publish
 
