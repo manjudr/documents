@@ -142,6 +142,21 @@ This is the key point. There is no search box and no browsing. The farmer **asks
 
 The assistant reads the question, works out what's being asked, and picks where to look. It has roughly seventeen different sources it can reach for.
 
+### Voice questions take the same path
+
+Speaking is just another way to type. Once speech becomes text, **the search is identical** — same tools, same sources, same routing. There is no voice-specific index and no separate voice search.
+
+Only the ends differ:
+
+| | **Web and app** | **Phone (Amul)** |
+|---|---|---|
+| Speech → text | the platform does it | the telephone provider does it |
+| Steps | three calls: transcribe, then ask, then speak the answer | one continuous streaming call |
+| Language handling | detect the spoken language, then transcribe in it | translate to English, reason, translate back |
+| Answer format | text on screen, optionally read aloud | speech only — no formatting, short sentences |
+
+Two things exist only on the phone side. The conversation is held per call, and if the caller drops and redials, the older in-flight reply is stopped so it can't write stale history. And when a lookup is slow, the assistant says something brief — "I'm getting back to you, please wait" — because silence on a phone line reads as a dropped call.
+
 ### Three different ways it looks things up
 
 **1. Structured lookup — for schemes and published content**
@@ -265,6 +280,8 @@ The reason for this document. Restated plainly:
 
 8. **Decide what belongs on the network.** Today the document/video search deliberately bypasses Beckn while structured content goes through it. That split happened by accident rather than design. Choose it consciously this time.
 
+8b. **Nobody publishes in Beckn format, and no content is actually held.** Publishers send flat fields in four different shapes; the node converts to Beckn at query time. Files are never uploaded — only links to the publisher's own server, which nothing validates, so dead links are advertised indefinitely. Two questions for the redesign: should publishers produce Beckn structure directly, and should the network hold content or keep pointing at other people's servers?
+
 9. **Only one product operates a node, but all three use the network.** BharatVistaar runs the only provider node examined here. MahaVistaar uses a shared node nobody has looked at. Amul runs no node yet is a client of several — it queries the Vistaar network for weather, prices and schemes, its own Amul network for documents and union schemes, and a separate node to place call bookings. The products also query each other. So the network already has real cross-traffic; it just has no registry, no signing and no discovery underneath it. That makes the redesign more urgent, not less.
 
 ---
@@ -351,6 +368,24 @@ Market and station reference data comes from a separate database the node connec
 ```
 
 It goes live on insertion. No review step follows.
+
+**Note what this is not.** The publisher does not send Beckn format. They send flat fields, and the node converts them into a Beckn catalog only when someone searches. Nobody outside the node ever sees or produces Beckn structure.
+
+**And no file is uploaded.** `url` is a pointer to the publisher's own server — the PDF or video stays there. The node stores metadata and a link, nothing more. If the department deletes that file, the node keeps advertising it and the farmer gets a dead link; nothing checks or refreshes these URLs. The only genuine file upload is for thumbnail images.
+
+**There are four different publish shapes**, none of them Beckn:
+
+| Content type | How it's published | What's stored |
+|---|---|---|
+| Advisory article | flat JSON, or a CSV row | fields + link |
+| PDF | same | fields + link — file stays external |
+| Video | same | fields + link |
+| Scheme details | same, or a scheme-specific endpoint | fields in the content table |
+| Scholarship | its own endpoint and its own 23-field shape | its own table |
+
+Scholarships don't share the content shape at all — different endpoint, different fields (amount, deadline, eligibility, selection criteria, contact), different table.
+
+**Don't confuse this with the scheme PDFs the assistant quotes from.** Those go through the knowledge catalog below: real file uploads, processed, reviewed by two people, indexed by meaning — and never touching Beckn. Same word "scheme", two unrelated pipelines.
 
 ### Publishing in bulk
 
