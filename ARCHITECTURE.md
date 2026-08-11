@@ -62,17 +62,28 @@ Every answer a farmer gets comes from one of three places. Two of them are catal
 
 The two catalogs have **different publishers, different approval rules, different storage and completely different search mechanics.** A request to "add a new scheme to the catalog" means two different jobs depending on which one is meant.
 
-**Why live data isn't a catalog:** nothing is published into it and no answer is kept — today's tomato price exists only for the length of one request. What *is* stored is the lookup table behind it: which markets exist, which weather stations exist, which commodity names are valid. So it's a live proxy with a reference table in front.
+**Why live data isn't a catalog:** nothing is published into it and no answer is kept — today's tomato price exists only for the length of one request. What *is* stored is the **market and station master data** behind it: which markets exist and where their boundaries fall, which weather stations exist and where. So it's a live proxy with a geospatial lookup in front.
 
 ```mermaid
 graph LR
-  Q["Farmer's question"] --> N["Provider node"]
-  N -->|"1 — which mandi?<br/>which station?"| R[("Reference data")]
+  Q["Farmer's question<br/>+ location"] --> N["Provider node"]
+  N -->|"1 — resolve location<br/>to official codes"| R[("Market &amp; station master data<br/>GEOSPATIAL — stores:<br/>• markets + district codes + boundaries<br/>• weather stations + coordinates<br/>• commodity codes")]
+  R -->|"districtcode, marketcode,<br/>station id"| N
   N -->|"2 — live, per request"| E["Agmarknet<br/>IMD / Mausamgram"]
-  E --> A["Answer<br/>nothing is stored"]
+  E --> A["Answer —<br/>nothing is stored"]
 ```
 
-This matters for the redesign: catalogs can be published and cached, live data cannot.
+**What it stores, and what it doesn't:**
+
+| Stored — slow-changing | Never stored — fetched per request |
+|---|---|
+| Markets, their district codes and geographic boundaries | Today's mandi prices |
+| Weather stations and their coordinates | Any forecast |
+| Valid commodity names and codes | — |
+
+**Why this step exists at all.** The government APIs don't accept "Nashik" or a latitude and longitude — they want a `districtcode` and `marketcode`, or a specific station id. The master data is what performs that translation, by point-in-polygon for markets and by distance ordering for stations. It lives in its own database, separate from the content tables, and is loaded and maintained outside the publish APIs entirely — no publisher can touch it.
+
+This matters for the redesign: catalogs can be published and cached, live data cannot — but **the master data in front of it is neither**, and today has no owner in the publishing model.
 
 **A note on scope.** These three cover every answer to a *general* question. They do not cover questions about a specific farmer — "has my PM-Kisan payment arrived?" — which are answered by a fourth path: a live, OTP-authenticated query against a government system, holding no data of its own. That path is §10.
 
