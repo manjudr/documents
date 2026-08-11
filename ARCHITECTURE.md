@@ -91,7 +91,13 @@ graph LR
 
 **Who approves it:** *nobody, at the item level.* An admin approves the **organisation** once. From that moment, anything that organisation uploads goes live immediately — there is no review queue, no second pair of eyes on individual content.
 
-**Where it lands:** a single table in a standard database. Notably, there are **no separate tables for providers, catalogs, or items**. When a search comes in, the Beckn-shaped response is assembled on the fly from those flat rows.
+**Where it lands:** a single content table in a standard database, reached only through a GraphQL layer.
+
+Alongside it sit two small account tables. A **User** row holds the login, role and approval state. A **Provider** row holds the organisation itself — and it holds only four fields: an id, a link to the user, the organisation name, and a source code. Published content links back to the user, so every row knows which organisation put it there.
+
+That is the entire notion of a provider: enough to say "this login belongs to ICAR", and nothing more. There is no contact detail, no endpoint, no signing key, no domain — nothing a network would need to treat the organisation as a participant rather than an account holder.
+
+And there is **no catalog or item structure at all**. When a search arrives, the Beckn-shaped catalog is assembled on the fly from flat content rows.
 
 ### The knowledge catalog
 
@@ -251,7 +257,7 @@ The reason for this document. Restated plainly:
 
 4. **Everything appears under one provider name.** All knowledge results come back attributed to a single provider, regardless of who actually published them. A real network needs each department to appear as itself.
 
-5. **The catalog isn't really a catalog.** There's no stored notion of providers, catalogs, or items — just flat content rows reshaped into Beckn's format at the moment of answering. A proper implementation needs the real structure.
+5. **The catalog isn't really a catalog.** There is no stored notion of catalogs or items — just flat content rows reshaped into Beckn's format at the moment of answering. A provider record does exist, but it carries only an organisation name and a source code: no endpoint, no key, no domain. Enough for an account, not enough for a network participant.
 
 6. **Nobody checks individual content.** Approval is at the organisation level only. If the new network requires per-item trust, that's new work, not a migration.
 
