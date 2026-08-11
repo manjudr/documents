@@ -200,7 +200,7 @@ graph LR
 8. **Beckn does not appear anywhere in publishing.** Not in what is sent, not in what is stored. It is built later, at search time.
 9. **The most-asked questions have no publisher at all.** Today's price and tomorrow's rain are fetched live and thrown away — nothing on this diagram covers them.
 
-### Publish — one request, end to end
+### Publish — one request, end to end (content catalog)
 
 An agriculture department publishes a new advisory article:
 
@@ -226,6 +226,38 @@ sequenceDiagram
   Note over H: the PDF or video never moved.<br/>Only its URL was published,<br/>and nothing ever checks it.
 ```
 
+### Publish — the same request for the knowledge catalog
+
+Put side by side with the one above, the contrast is the whole point: **no login, no endpoint, no HTTP at all — and two humans instead of none.**
+
+```mermaid
+sequenceDiagram
+  participant T as Content team member
+  participant P as docs-pipeline<br/>(separate repo)
+  participant R as Reviewer
+  participant S as Superadmin
+  participant V as Vector DB
+
+  Note over T: starts with a real file —<br/>a scheme guideline PDF
+  T->>P: runs the pipeline by hand<br/>NO API, NO endpoint
+  Note over P: splits the document into passages,<br/>turns each into a numeric form<br/>of its MEANING
+  P->>R: staged for review
+  R->>S: approved
+  Note over S: promotes to production
+  S->>V: passages land here,<br/>plus the scheme-list cache
+  Note over V: the assistant reads this DIRECTLY.<br/>The provider node never touches it.
+```
+
+**The difference in one line each:**
+
+| | Content catalog | Knowledge catalog |
+|---|---|---|
+| How it is sent | an HTTP request | a person running a pipeline |
+| Who can do it | any approved outside org | internal team only |
+| Checks on the item | **none** — live on insert | **two people**, in sequence |
+| What lands | a flat row with a link | passages indexed by meaning |
+| Who reads it later | the provider node | the assistant, directly |
+
 ---
 
 ## 4. Discover — how a search works
@@ -240,33 +272,22 @@ Everything a farmer can ask goes through this one picture. Text, voice and photo
 
 ```mermaid
 graph LR
-  subgraph BAP["THE ASSISTANT — acts as the BAP"]
-    A["STEP 1<br/>the model picks ONE tool"]
-    CC[("bundled files —<br/>commodity codes, glossary")]
-  end
+  F["Farmer asks<br/>text · voice · photo"] --> A
 
-  subgraph BPP["THE PROVIDER NODE — acts as the BPP"]
-    N["STEP 2<br/>match the label against<br/>a hardcoded list"]
-    GEO[("market and station master data<br/>GEOSPATIAL — no publisher")]
-  end
+  A["THE ASSISTANT<br/>picks ONE tool.<br/>That choice decides everything."]
 
-  F["Farmer<br/>text · voice · photo"] --> A
-  A -.->|"resolve names to codes<br/>NO network"| CC
-  A -->|"KNOWLEDGE — no Beckn, direct"| V[("Vector DB / search index<br/>documents, video, pests<br/>returns PLAIN TEXT")]
-  A -->|"CONTENT and LIVE — POST /search<br/>ONE address · labelled · NO auth"| N
+  A -->|"a knowledge question —<br/>no Beckn, goes straight there"| V[("KNOWLEDGE CATALOG<br/>vector DB<br/>returns plain text")]
+  A -->|"anything else — POST /search<br/>one address · a label · no login"| N
 
-  N -->|"LIVE step 1 — lat/lon to<br/>district, market, station id"| GEO
-  N -->|"LIVE step 2 —<br/>every request"| GOV[("Agmarknet · IMD ·<br/>Mausamgram<br/>NOTHING IS STORED")]
-  N -->|"CONTENT — read a row"| DB[("content tables<br/>schemes, advisories,<br/>scholarships")]
-  N -.->|"label NOT in the list —<br/>silent fallthrough"| GEN[("generic index")]
+  N["THE PROVIDER NODE<br/>reads the label,<br/>matches a fixed list"]
 
-  V --> A
-  GOV --> N
-  DB --> N
-  GEN --> N
-  N -->|"catalog built in code,<br/>SAME HTTP response"| A
-  A --> R["Answer in the farmer's<br/>language — streamed, or spoken"]
+  N --> DB[("CONTENT CATALOG<br/>its own tables —<br/>schemes, advisories, scholarships")]
+  N --> GOV[("LIVE DATA<br/>lat/lon → market or station code,<br/>then Agmarknet · IMD.<br/>Nothing is stored.")]
 ```
+
+Answers come back the same way they went out, in the same HTTP call — the node builds the Beckn wrapper on the way out, and the assistant turns whatever it gets into a sentence in the farmer's language, typed or spoken.
+
+Two details left off the picture to keep it readable, both covered in the points below: the assistant looks up commodity codes in a **file bundled inside it** before calling the node, and a label the node **doesn't recognise** quietly falls through to a generic index.
 
 **The same three sources from §2, seen from the search side:**
 
