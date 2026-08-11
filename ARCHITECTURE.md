@@ -200,6 +200,16 @@ Two things exist only on the phone side. The conversation is held per call, and 
 
 **3. Live proxy — prices and weather.** The assistant sends an ordinary Beckn search, exactly as it would for a scheme; the *node* makes the outbound government call. The assistant can't tell this apart from a stored-catalog answer — both come back in the same shape.
 
+**Which of the three is used is decided by one thing: which tool the model picks.** There is no classifier, no lookup, no rule. The model reads the question, reads the tool descriptions, and chooses — and each tool is hardwired to exactly one destination:
+
+| Farmer asks | Model picks | Answered by |
+|---|---|---|
+| "will I get money if my crop fails" | document search | **vector database, direct — no Beckn** |
+| "tomato rate today" | mandi | Beckn node → **live Agmarknet call** |
+| "what is PM-Kisan" | scheme info | Beckn node → **content database** |
+
+The tool never inspects the question; it already knows where it goes. So **tool choice is the whole of discovery.** If the model picks wrong, the wrong database answers and nothing downstream notices — there is no fallback and no second opinion.
+
 ### How the search knows which database to hit
 
 Routing happens at **two levels**, in two different systems. Neither is a network lookup.
