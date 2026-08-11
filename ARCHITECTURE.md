@@ -617,7 +617,7 @@ Also worth noting: Beckn's `/init` and `/confirm` were designed for placing orde
 
 A **tool** is a Python function the assistant's language model is allowed to call. Each one is registered with a name, a plain-English description, and typed arguments. The model reads the farmer's question, picks the function whose description fits, and fills in the arguments. It never sees a database — only this menu. This table *is* the menu.
 
-The **Route** column is the point of the table: it shows which tools go through Beckn and which don't.
+Two columns carry the meaning. **Group** says what kind of job the tool does; **Route** says whether it goes through Beckn.
 
 | Product | Tools |
 |---|---|
@@ -625,101 +625,128 @@ The **Route** column is the point of the table: it shows which tools go through 
 | MahaVistaar | 25 |
 | Amul | 9 (6 always on, 3 only when the network flag is set) |
 
+**The six groups:**
+
+| Group | What it means |
+|---|---|
+| **Look up** | Fetch a fact about the world — a price, a forecast, a scheme's rules. Same answer for any farmer who asks. |
+| **Search meaning** | Find the relevant passage or video by what the question *means*, not the words it uses. |
+| **My status** | Answer a question about *this* farmer's own record. Needs identity, so OTP-gated. |
+| **Grievance** | File a complaint and track the ticket. Also OTP-gated. |
+| **Act** | Change something in the real world — book a visit, send an SMS. |
+| **Plumbing** | Not an answer to anything. Feeds the other tools usable inputs, or remembers the farmer. |
+
+The first two are read-only and anonymous. The middle two need to know who's asking. **Act** is the only group with consequences that can't be undone by asking again.
+
 ### BharatVistaar — 31
 
 Every tool marked *Beckn* posts to the same single configured address; only the label inside the body differs.
 
-| Tool | What it does | Route |
-|---|---|---|
-| `get_scheme_info` | Details of a government agricultural scheme | Beckn |
-| `search_schemes` | Semantic search over scheme guideline PDFs | Beckn → vector store |
-| `weather_forecast` | Forecast for a location | Beckn → live IMD/Mausamgram |
-| `get_mandi_prices` | Market prices for a commodity near a location | Beckn → live Agmarknet |
-| `gfr_get_crop_registries` | Crop registry for lat/lon | Beckn |
-| `gfr_get_recommendations` | Fertiliser recommendation for those crops | Beckn |
-| `get_sathi_crop_groups` | Official SATHI crop groups | Beckn |
-| `list_sathi_crops_in_group` | Crops within a SATHI group | Beckn |
-| `search_sathi_seed_availability` | Certified seed dealers with stock nearby | Beckn |
-| `call_maha_vistaar_network` | Fetch MahaVistaar scheme info (see §11) | Beckn |
-| `check_smam_scheme_status` | SMAM application / beneficiary status | Beckn `/search` |
-| `initiate_pm_kisan_status_check` | Send OTP for PM-Kisan status | Beckn `/init` |
-| `check_pm_kisan_status_with_otp` | Verify OTP, return installment status | Beckn `/status` |
-| `initiate_pmfby_status_check` | Send OTP for crop-insurance status | Beckn `/init` |
-| `check_pmfby_status_with_otp` | Verify OTP, return policy status | Beckn `/status` |
-| `check_shc_status` | Soil health card status | Beckn `/init` |
-| `pmkisan_grievance_send_otp` | Send OTP to file a PM-Kisan grievance | Beckn `/init` |
-| `pmkisan_submit_grievance` | File the grievance after OTP | Beckn `/init` |
-| `pmkisan_grievance_status` | Status of a filed grievance | Beckn `/status` |
-| `initiate_pmfby_grievance_otp` | Send OTP for a crop-insurance grievance | Beckn `/init` |
-| `check_pmfby_grievance_otp` | Verify that OTP | Beckn `/status` |
-| `pmfby_submit_grievance` | File the grievance | Beckn `/init` |
-| `pmfby_grievance_status` | Status of the support ticket | Beckn `/status` |
-| `search_documents` | Semantic search over advisory documents | **Direct — vector store** |
-| `search_video` | Semantic search over videos | **Direct — vector store** |
-| `search_pests_diseases` | Semantic search over crop pests and diseases | **Direct — vector store** |
-| `analyze_crop_image` | Identify pest/disease from a photo | **Direct — NPSS** |
-| `forward_geocode` | Place name → coordinates | **Direct — geocoder** |
-| `reverse_geocode` | Coordinates → place name | **Direct — geocoder** |
-| `search_terms` | Match a glossary term across languages | **In-process — bundled file** |
-| `search_commodity` | Match a commodity name across languages | **In-process — bundled file** |
+| Group | Tool | What it does | Route |
+|---|---|---|---|
+| Look up | `get_scheme_info` | Details of a government agricultural scheme | Beckn |
+| Look up | `weather_forecast` | Forecast for a location | Beckn → live IMD/Mausamgram |
+| Look up | `get_mandi_prices` | Market prices for a commodity near a location | Beckn → live Agmarknet |
+| Look up | `gfr_get_crop_registries` | Crop registry for lat/lon | Beckn |
+| Look up | `gfr_get_recommendations` | Fertiliser recommendation for those crops | Beckn |
+| Look up | `get_sathi_crop_groups` | Official SATHI crop groups | Beckn |
+| Look up | `list_sathi_crops_in_group` | Crops within a SATHI group | Beckn |
+| Look up | `search_sathi_seed_availability` | Certified seed dealers with stock nearby | Beckn |
+| Look up | `call_maha_vistaar_network` | Fetch MahaVistaar scheme info (see §11) | Beckn |
+| Search meaning | `search_schemes` | Semantic search over scheme guideline PDFs | Beckn → vector store |
+| Search meaning | `search_documents` | Semantic search over advisory documents | **Direct — vector store** |
+| Search meaning | `search_video` | Semantic search over videos | **Direct — vector store** |
+| Search meaning | `search_pests_diseases` | Semantic search over crop pests and diseases | **Direct — vector store** |
+| Search meaning | `analyze_crop_image` | Identify pest/disease from a photo | **Direct — NPSS** |
+| My status | `initiate_pm_kisan_status_check` | Send OTP for PM-Kisan status | Beckn `/init` |
+| My status | `check_pm_kisan_status_with_otp` | Verify OTP, return installment status | Beckn `/status` |
+| My status | `initiate_pmfby_status_check` | Send OTP for crop-insurance status | Beckn `/init` |
+| My status | `check_pmfby_status_with_otp` | Verify OTP, return policy status | Beckn `/status` |
+| My status | `check_shc_status` | Soil health card status | Beckn `/init` |
+| My status | `check_smam_scheme_status` | SMAM application / beneficiary status | Beckn `/search` |
+| Grievance | `pmkisan_grievance_send_otp` | Send OTP to file a PM-Kisan grievance | Beckn `/init` |
+| Grievance | `pmkisan_submit_grievance` | File the grievance after OTP | Beckn `/init` |
+| Grievance | `pmkisan_grievance_status` | Status of a filed grievance | Beckn `/status` |
+| Grievance | `initiate_pmfby_grievance_otp` | Send OTP for a crop-insurance grievance | Beckn `/init` |
+| Grievance | `check_pmfby_grievance_otp` | Verify that OTP | Beckn `/status` |
+| Grievance | `pmfby_submit_grievance` | File the grievance | Beckn `/init` |
+| Grievance | `pmfby_grievance_status` | Status of the support ticket | Beckn `/status` |
+| Plumbing | `forward_geocode` | Place name → coordinates | **Direct — geocoder** |
+| Plumbing | `reverse_geocode` | Coordinates → place name | **Direct — geocoder** |
+| Plumbing | `search_terms` | Match a glossary term across languages | **In-process — bundled file** |
+| Plumbing | `search_commodity` | Match a commodity name across languages | **In-process — bundled file** |
 
-Thirteen of these are transactional rather than lookups — see §10.
+**9 look up · 5 search meaning · 6 my status · 7 grievance · 4 plumbing.** The thirteen in *My status* and *Grievance* are the transactional ones — see §10. BharatVistaar has no *Act* tools; it never books or sends anything.
 
 ### MahaVistaar — 25
 
 Unlike BharatVistaar, MahaVistaar names a **different destination per target** inside the request (POCRA, MahaDBT, Bharat Vistaar), and the Bharat Vistaar path uses its own separate URL.
 
-| Tool | What it does | Route |
-|---|---|---|
-| `weather_forecast` | Forecast for a location | Beckn |
-| `weather_historical` | Past weather for a location | Beckn |
-| `mandi_prices` | Market prices for a location | Beckn |
-| `agri_services` | Nearby KVK, custom hiring centres, soil labs, warehouses | Beckn |
-| `contact_agricultural_staff` | Contact details for local agriculture staff | Beckn |
-| `fetch_agristack_data` | Farmer profile and GPS from Agristack | Beckn |
-| `get_scheme_info` | Details of a government agricultural scheme | Beckn |
-| `get_scheme_status` | Farmer's MahaDBT application status | Beckn → MahaDBT |
-| `get_pocra_dbt_status` | Farmer's POCRA DBT application status | Beckn → POCRA |
-| `pmkisan_installment_init` | Send OTP for PM-Kisan installment status | **Cross-network → BharatVistaar** |
-| `pmkisan_installment_status` | Verify OTP, fetch installment details | **Cross-network → BharatVistaar** |
-| `smam_application_status` | SMAM status by application number | **Cross-network → BharatVistaar** |
-| `get_scheme_codes` | Prioritised scheme list — state first, then central | Local list |
-| `search_documents` | Semantic search over advisory documents | **Direct — vector store** |
-| `search_videos` | Semantic search over videos | **Direct — vector store** |
-| `analyze_pest_disease_image` | Identify pest/disease from an uploaded photo | **Direct — pest service** |
-| `forward_geocode` | Place name → coordinates | **Direct — geocoder** |
-| `reverse_geocode` | Coordinates → place name | **Direct — geocoder** |
-| `recall_farmer_memory` | Recall what the farmer said in past chats | Memory store |
-| `save_farmer_memory` | Save durable farmer context | Memory store |
-| `edit_farmer_memory` | Correct a saved memory | Memory store |
-| `delete_farmer_memory` | Delete a saved memory | Memory store |
-| `update_farmer_profile` | Save stable farm facts (crops, land, irrigation) | Profile store |
-| `remove_farmer_profile_value` | Remove a retracted fact | Profile store |
-| `search_terms` | Match a glossary term across languages | **In-process — bundled file** |
+| Group | Tool | What it does | Route |
+|---|---|---|---|
+| Look up | `weather_forecast` | Forecast for a location | Beckn |
+| Look up | `weather_historical` | Past weather for a location | Beckn |
+| Look up | `mandi_prices` | Market prices for a location | Beckn |
+| Look up | `agri_services` | Nearby KVK, custom hiring centres, soil labs, warehouses | Beckn |
+| Look up | `contact_agricultural_staff` | Contact details for local agriculture staff | Beckn |
+| Look up | `fetch_agristack_data` | Farmer profile and GPS from Agristack | Beckn |
+| Look up | `get_scheme_info` | Details of a government agricultural scheme | Beckn |
+| Look up | `get_scheme_codes` | Prioritised scheme list — state first, then central | Local list |
+| Search meaning | `search_documents` | Semantic search over advisory documents | **Direct — vector store** |
+| Search meaning | `search_videos` | Semantic search over videos | **Direct — vector store** |
+| Search meaning | `analyze_pest_disease_image` | Identify pest/disease from an uploaded photo | **Direct — pest service** |
+| My status | `get_scheme_status` | Farmer's MahaDBT application status | Beckn → MahaDBT |
+| My status | `get_pocra_dbt_status` | Farmer's POCRA DBT application status | Beckn → POCRA |
+| My status | `pmkisan_installment_init` | Send OTP for PM-Kisan installment status | **Cross-network → BharatVistaar** |
+| My status | `pmkisan_installment_status` | Verify OTP, fetch installment details | **Cross-network → BharatVistaar** |
+| My status | `smam_application_status` | SMAM status by application number | **Cross-network → BharatVistaar** |
+| Plumbing | `forward_geocode` | Place name → coordinates | **Direct — geocoder** |
+| Plumbing | `reverse_geocode` | Coordinates → place name | **Direct — geocoder** |
+| Plumbing | `search_terms` | Match a glossary term across languages | **In-process — bundled file** |
+| Plumbing | `recall_farmer_memory` | Recall what the farmer said in past chats | Memory store |
+| Plumbing | `save_farmer_memory` | Save durable farmer context | Memory store |
+| Plumbing | `edit_farmer_memory` | Correct a saved memory | Memory store |
+| Plumbing | `delete_farmer_memory` | Delete a saved memory | Memory store |
+| Plumbing | `update_farmer_profile` | Save stable farm facts (crops, land, irrigation) | Profile store |
+| Plumbing | `remove_farmer_profile_value` | Remove a retracted fact | Profile store |
 
-Two of these are transactional (the PM-Kisan OTP pair). `reasoning_tool` and `planning_tool` also exist in the codebase but are not registered on the agent.
+**8 look up · 3 search meaning · 5 my status · 9 plumbing.** MahaVistaar has **no grievance tools and no *Act* tools** — a farmer can check a status here but cannot file a complaint or book anything. Its plumbing group is the largest of the three products because it is the only one that remembers farmers between chats.
+
+`reasoning_tool` and `planning_tool` also exist in the codebase but are not registered on the agent.
 
 ### Amul — 9
 
 Amul is a **separate deployment** with its own APIs. Its three network tools are the only Beckn traffic, and they are hidden from the model entirely unless the network flag is on — so with the flag off the model sees just six.
 
-| Tool | What it does | Route |
-|---|---|---|
-| `get_farmer_milk_collection_details` | Milk collection records and deductions for a date range | Direct — Amul API |
-| `create_ai_call` | Book an artificial-insemination visit | Direct — Amul API |
-| `create_health_call` | Book a veterinary health visit, return ticket number | Direct — Amul API |
-| `get_union_scheme_data` | The farmer's milk-union welfare schemes | Direct — Amul API |
-| `check_loan_eligibility` | Micro-loan eligibility; sends approval SMS on confirmation | Direct — Amul API |
-| `search_documents` | Semantic search over veterinary and agri documents | **Direct — vector store** |
-| `get_vistaar_weather` | Forecast for the Amul region | Beckn → BharatVistaar |
-| `get_vistaar_mandi_prices` | Live mandi prices near the Amul region | Beckn → BharatVistaar |
-| `get_vistaar_scheme_info` | Central government scheme information | Beckn → BharatVistaar |
+| Group | Tool | What it does | Route |
+|---|---|---|---|
+| Look up | `get_farmer_milk_collection_details` | Milk collection records and deductions for a date range | Direct — Amul API |
+| Look up | `get_union_scheme_data` | The farmer's milk-union welfare schemes | Direct — Amul API |
+| Look up | `get_vistaar_weather` | Forecast for the Amul region | Beckn → BharatVistaar |
+| Look up | `get_vistaar_mandi_prices` | Live mandi prices near the Amul region | Beckn → BharatVistaar |
+| Look up | `get_vistaar_scheme_info` | Central government scheme information | Beckn → BharatVistaar |
+| Search meaning | `search_documents` | Semantic search over veterinary and agri documents | **Direct — vector store** |
+| Act | `create_ai_call` | Book an artificial-insemination visit | Direct — Amul API |
+| Act | `create_health_call` | Book a veterinary health visit, return ticket number | Direct — Amul API |
+| Act | `check_loan_eligibility` | Micro-loan eligibility; sends approval SMS on confirmation | Direct — Amul API |
+
+**5 look up · 1 search meaning · 3 act.** Amul is the **only product with *Act* tools** — the only one where the assistant dispatches a person or sends money-related SMS. It has no OTP-gated status or grievance tools; the farmer is already identified by the phone they called from.
 
 **One thing this table can't show.** With the network flag on, three of the *direct* tools silently change route — vet-document search, AI-call booking, and union schemes each re-route through Beckn instead of the Amul API. Same tool name, same description, different backend. The model has no idea either way.
 
-### Two things this table makes visible
+### What the grouping makes visible
 
-- **Most tools never touch Beckn.** Everything meaning-based — documents, videos, pest search — queries its store directly. Beckn covers structured lookups, live proxying, and transactions.
+| Group | BharatVistaar | MahaVistaar | Amul |
+|---|---|---|---|
+| Look up | 9 | 8 | 5 |
+| Search meaning | 5 | 3 | 1 |
+| My status | 6 | 5 | — |
+| Grievance | 7 | — | — |
+| Act | — | — | 3 |
+| Plumbing | 4 | 9 | — |
+
+- **The three products are not the same shape.** BharatVistaar is the only one that can file a grievance. Amul is the only one that can book a person or send an SMS. MahaVistaar is the only one that remembers a farmer between conversations. A farmer's options depend entirely on which product they reached.
+- **Most tools never touch Beckn.** Everything meaning-based queries its store directly. Beckn covers structured lookups, live proxying, and transactions.
 - **Every tool's route is fixed at build time.** No tool decides where to go; it was hardwired when it was written. That is why tool choice is the whole of discovery (§4).
 
 ---
