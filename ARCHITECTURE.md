@@ -555,6 +555,19 @@ Everything above is about *finding* things. But **13 of the assistant's 31 tools
 | Application status | PM-Kisan, PMFBY, Soil Health Card, SMAM | "has my payment come through?" — checks a real application against a government system |
 | Grievances | PM-Kisan (3), PMFBY (4) | files a complaint, then tracks it |
 
+**Walked through — a farmer asks "has my PM-Kisan payment come?"**
+
+1. The model picks the PM-Kisan status tool.
+2. The tool sends **`/init`** with the farmer's registration number — this triggers an **OTP to their registered mobile**.
+3. The assistant asks the farmer to read out the OTP.
+4. The farmer replies. The model now calls a **second** tool, passing that OTP.
+5. That tool sends **`/status`** — the government system returns the real record.
+6. The assistant reads it back in the farmer's own language.
+
+This is why these tools come in pairs — `initiate_…` and `check_…_with_otp`. **The conversation has to survive between steps 2 and 4**, which search never has to do.
+
+Grievances are the same shape, one step longer: OTP → verify → **file the complaint** → later, check where it got to. Filing uses `/init` again; tracking uses `/status`.
+
 **How they differ from search — this is the important part:**
 
 | | Search | These |
