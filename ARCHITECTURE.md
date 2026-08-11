@@ -2,6 +2,8 @@
 
 A plain-language explanation of how the platform works today, written as the baseline for moving onto the current Beckn protocol.
 
+**Publish** is §3, **discover** is §4. Sections 1–2 set up who's involved and where answers come from; §7 lists where today's system departs from Beckn; §10 covers the transactional flows, which are neither publish nor discover but are a third of what the system does. **§11 lists what was not verified** — read it before relying on anything here.
+
 ---
 
 ## 1. The three products
@@ -34,44 +36,22 @@ Every answer a farmer gets comes from one of three places. Two of them are catal
 | Stored | yes — structured rows | yes — meaning-indexed passages | **no** — only reference data |
 | Searched by | matching on category and fields | closeness of meaning | fetched fresh per request |
 
-**Why live data isn't called a catalog:** nothing is ever published into it and no answer is kept. Today's tomato price exists only for the duration of one request. What *is* stored is the lookup table behind it — which markets exist, which weather stations exist, which commodity names are valid — and that does need maintaining. So it's a live proxy with a reference table in front, not a catalog.
+The two catalogs have **different publishers, different approval rules, different storage and completely different search mechanics.** A request to "add a new scheme to the catalog" means two different jobs depending on which one is meant.
 
-It matters for the redesign because the three behave differently under Beckn: catalogs can be published and cached, live data cannot.
+**Why live data isn't a catalog:** nothing is published into it and no answer is kept — today's tomato price exists only for the length of one request. What *is* stored is the lookup table behind it: which markets exist, which weather stations exist, which commodity names are valid. So it's a live proxy with a reference table in front.
 
-**The two catalogs.** Something is published, it is stored, it is searched later.
-
-```mermaid
-graph TB
-  subgraph C1["CONTENT CATALOG — the Beckn one"]
-    direction TB
-    P1["Published by:<br/>agriculture departments, ICAR,<br/>scheme owners"]
-    W1["Scheme details, advisory articles,<br/>videos, scholarships"]
-    S1[("Stored as structured rows<br/>in one database table")]
-    P1 -->|"publishes"| W1 -->|"stored"| S1
-  end
-
-  subgraph C2["KNOWLEDGE CATALOG — the AI one"]
-    direction TB
-    P2["Published by:<br/>the internal content team"]
-    W2["Scheme guideline PDFs,<br/>government circulars, manuals"]
-    S2[("Stored as meaning-indexed<br/>text in a vector database")]
-    P2 -->|"publishes"| W2 -->|"stored"| S2
-  end
+```
+   Farmer's question
+          |
+   Provider node  --1-->  reference database: which mandi? which station?
+                  --2-->  Agmarknet / IMD / Mausamgram, live, per request
+          |
+   Answer  —  nothing is stored
 ```
 
-They have **different publishers, different approval rules, different storage, and completely different search mechanics**. A request to "add a new scheme to the catalog" means two different jobs depending on which one is meant.
+This matters for the redesign: catalogs can be published and cached, live data cannot.
 
-**And the third source, drawn out.** When a farmer asks, the provider node calls the government system and passes back whatever it says:
-
-```mermaid
-graph LR
-  Q["Farmer's question<br/>arrives"] --> N["Provider node"]
-  N -->|"1 — look up reference data:<br/>which mandi? which weather station?"| Ref[("Reference database<br/>markets, stations, commodities")]
-  Ref --> N
-  N -->|"2 — call live, per request"| Ext["Agmarknet — prices<br/>IMD / Mausamgram — forecasts"]
-  Ext -->|"today's values"| N
-  N --> A["Answer<br/>nothing is stored"]
-```
+**A note on scope.** These three cover every answer to a *general* question. They do not cover questions about a specific farmer — "has my PM-Kisan payment arrived?" — which are answered by a fourth path: a live, OTP-authenticated query against a government system, holding no data of its own. That path is §10.
 
 ---
 
@@ -137,41 +117,21 @@ That is the whole notion of a provider. No contact detail, no endpoint, no signi
 
 ### The whole publish picture
 
-```mermaid
-graph LR
-  Dept["Agriculture dept /<br/>ICAR / scheme owner"]
-  Dept --> E1["POST /provider/content<br/>one item"]
-  Dept --> E2["POST /provider/createBulkContent<br/>CSV file"]
-  Dept --> E3["POST /provider/createBulkContent1<br/>JSON array"]
-  Dept --> E4["POST /provider/icarcontent<br/>scheme-shaped"]
-  Dept --> E5["POST /provider/scholarship"]
+```
+ EXTERNAL PATH  —  no item review
+   Dept / ICAR  --(4 content routes + scholarship)-->  GraphQL  -->  flat rows, live on insert
+                                                                          |
+                                             converted to Beckn ONLY at search time, in code
 
-  E1 --> GQL["GraphQL layer"]
-  E2 --> GQL
-  E3 --> GQL
-  E4 --> GQL
-  E5 --> GQL
-
-  Admin["Admin"] -.->|"approves the ORGANISATION once,<br/>never the content"| Dept
-
-  GQL -->|"flat rows, live on insert"| DB[("Content tables")]
-  GQL --> SCH[("Scholarship table")]
-  GQL --> ACC[("User + Provider<br/>account records")]
-
-  DB -.->|"converted ONLY at search time,<br/>by per-category code"| BK["Beckn catalog<br/>in the response"]
-
-  Team["Internal content team"] -->|"real file upload"| Pipe["Processing pipeline<br/>splits + indexes by meaning"]
-  Pipe --> Rev{"Reviewer<br/>approves"}
-  Rev --> Sup{"Superadmin<br/>promotes"}
-  Sup --> VDB[("Vector database")]
-  Sup --> Cache[("Cached scheme list")]
+ INTERNAL PATH  —  two approvals
+   Content team  --(real file upload)-->  pipeline  -->  reviewer  -->  superadmin  -->  vector DB
 ```
 
-**Three things to read off this diagram:**
+**Three things to read off this:**
 
-1. **The two paths have opposite trust models.** External publishers get no item review; the internal team requires two approvals. The content strangers publish is checked less than the content staff publish.
-2. **Beckn appears only on the dotted line** — at search time, in code. It is never a publish format and never a storage format.
-3. **Only the internal path uploads real files.** Everything on the external path is a link to somebody else's server.
+1. **The two paths have opposite trust models.** The content strangers publish is checked less than the content staff publish.
+2. **Beckn appears only at search time**, in code. Never a publish format, never a storage format.
+3. **Only the internal path uploads real files.** Everything external is a link to somebody else's server.
 
 ### Live data — nothing to publish
 
@@ -185,7 +145,14 @@ Nobody publishes mandi prices or weather forecasts. What *is* maintained is the 
 
 This is the key point. There is no search box and no browsing. The farmer **asks a question in plain language** — typed or spoken, in their own language. Everything after that is the assistant's job.
 
-The assistant reads the question, works out what's being asked, and picks where to look. It has roughly seventeen different sources it can reach for.
+The assistant reads the question, works out what's being asked, and picks where to look. It has **31 tools** registered — and not all of them are searches:
+
+| | Count | What they do |
+|---|---|---|
+| Search and lookup | 18 | schemes, documents, video, pests, weather, mandi prices, commodities, geocoding, seed availability, crop-image analysis, glossary |
+| **Transactional** | **13** | check a farmer's application status, file and track grievances — OTP-gated, acting on one named person |
+
+Everything in this section describes the first row. **The transactional half is a different thing entirely** and is covered in §10 — it is easy to miss, and it is not search.
 
 ### Voice questions take the same path
 
@@ -204,47 +171,41 @@ Two things exist only on the phone side. The conversation is held per call, and 
 
 ### Three different ways it looks things up
 
-**1. Structured lookup — for schemes and published content**
-The assistant sends a request across the Beckn network describing what it wants. The provider node reads the *category* of that request and routes it to the matching internal service, which queries the database and returns matching rows dressed up in Beckn's catalog format.
+**1. Structured lookup — schemes and published content.** A Beckn search to the provider node, which queries its database and returns rows in Beckn catalog format.
 
-**2. Meaning-based search — for documents and videos**
-The assistant converts the farmer's question into the same kind of numeric meaning-representation used when the documents were indexed, then finds the passages that sit closest to it. This is why a farmer can ask "will I get money if my crop fails" and get back the right paragraph from an insurance scheme document that never uses those words.
+**2. Meaning-based search — documents and videos.** The assistant turns the question into the same numeric meaning-representation used when the documents were indexed, then finds the closest passages. This is why "will I get money if my crop fails" finds the right paragraph in an insurance document that never uses those words. **This bypasses Beckn entirely** — the assistant queries the vector database directly.
 
-This search **does not go through Beckn at all.** The assistant queries the vector database directly.
-
-**3. Live proxy — for prices and weather**
-The assistant does **not** call the government system itself. It sends an ordinary Beckn search, exactly as it would for a scheme. The provider node recognises the category, and *it* makes the outbound call — first resolving which market or weather station applies, then fetching the current values. The assistant cannot tell the difference between this and a stored-catalog answer; both come back in the same shape.
+**3. Live proxy — prices and weather.** The assistant sends an ordinary Beckn search, exactly as it would for a scheme; the *node* makes the outbound government call. The assistant can't tell this apart from a stored-catalog answer — both come back in the same shape.
 
 ### How the search knows which database to hit
 
 Routing happens at **two levels**, in two different systems. Neither is a network lookup.
 
-```mermaid
-graph TD
-  Q["Farmer: 'what is the tomato rate today?'"] --> L1
-
-  subgraph L1 ["LEVEL 1 — in the assistant · WHICH NODE?"]
-    direction TB
-    M["Language model reads the question<br/>and picks one tool"] --> T["The tool has one fixed address,<br/>set at deploy time"]
-  end
-
-  L1 -->|"Beckn search, stamped with<br/>a fixed category label"| L2
-
-  subgraph L2 ["LEVEL 2 — in the provider node · WHICH DATABASE?"]
-    direction TB
-    S["Match the label against a fixed list"] --> H["Hand off to the matching<br/>internal service"]
-  end
-
-  L2 --> D[("Agmarknet price service")]
+```
+   "what is the tomato rate today?"
+                 |
+   LEVEL 1  —  in the assistant  —  WHICH TOOL?
+   model reads the question, picks the mandi tool
+                 |
+                 |   Beckn search, labelled  price-discovery
+                 |   sent to the ONE configured address
+                 v
+   LEVEL 2  —  in the provider node  —  WHICH DATABASE?
+   match the label against a fixed list
+                 |
+                 v
+        Agmarknet price service
 ```
 
-**Level 1 — which node? Decided by the language model.**
-The assistant holds a set of tools, each described in plain English. The model reads the farmer's question, judges which tool fits, and calls it. Every tool carries one destination address, fixed in configuration at deploy time. So this level picks *who to ask* — and it is a model judgement, not a lookup. If the model picks wrong, the question goes to the wrong node.
+**Level 1 — which tool? Decided by the language model.**
+The assistant holds a set of tools, each described in plain English. The model reads the farmer's question, judges which tool fits, and calls it. This is a model judgement, not a lookup.
 
-**Level 2 — which database? Decided by a label in the request.**
-Each tool writes one fixed category label into the search request it sends. The provider node reads that label, matches it against a fixed internal list, and hands the request to the matching service. So this level picks *which store answers* — and the decision was already made by the caller before the request left.
+**Level 1 does not choose a destination.** This is worth stating plainly, because the obvious assumption is wrong: in BharatVistaar **every Beckn tool posts to the same single configured address.** Weather, mandi, schemes, seed availability, the cross-network tool — one address for all of them. Choosing the mandi tool does not send the request anywhere different; it only changes the label written into it.
 
-The important consequence: **the node performs no judgement of its own.** It does not read the question, inspect the farmer's intent, or choose the best source. It obeys the label. So the answer to "how does it know which database?" is blunt — **the caller names it.** The category label *is* the database selector.
+**Level 2 — which database? Decided by that label.**
+The provider node reads the category label, matches it against a fixed internal list, and hands the request to the matching service. The decision was already made by the caller before the request left.
+
+So of the two levels, **Level 2 does effectively all the routing.** The node performs no judgement of its own — it does not read the question or weigh which source is best. It obeys the label. The answer to "how does it know which database?" is blunt: **the caller names it.** The category label *is* the database selector.
 
 | Label the caller sends | Where the answer comes from |
 |---|---|
@@ -257,48 +218,49 @@ The important consequence: **the node performs no judgement of its own.** It doe
 | `knowledge-advisory` | a general-purpose external search index |
 | anything else | falls through to that same general-purpose index |
 
-Milk and dairy aren't on this list at all — Amul is a **separate node** reached by its own fixed address.
+Milk and dairy aren't on this list at all — Amul is a **separate deployment** with its own addresses.
 
-Two things follow from this design, both of which matter for the redesign:
+Two things follow, both of which matter for the redesign:
 
-- **An unrecognised label doesn't fail — it silently answers from the generic index.** This is not hypothetical: scheme search sends a label the node has no entry for, so scheme questions are answered by generic search today. See §7.
+- **An unrecognised label doesn't fail — it silently answers from the generic index.** Not hypothetical: scheme search sends a label the node has no entry for, so scheme questions are answered by generic search today. See §7.
 - **Adding a data source means editing that list and shipping a release.** There is no way for a new source to announce itself.
+
+**One inconsistency to note.** The node matches some labels on the descriptor's *name* and others on its *code*, and the two are checked with different case rules. Three labels also do not go where their names suggest: `schemes-agri` reaches the PM-Kisan handler, `icar-schemes` reaches the general content database, and the weather tool sends the name `Weather-Forecast-Mausamgram` alongside an unrelated code. Matching works today by coincidence of convention, not by design.
 
 ### Why neither level counts as discovery
 
-There is **no registry**. Nothing in the system ever looks up who is on the network.
+There is **no registry**. Nothing ever looks up who is on the network.
 
-Level 1 doesn't discover anything — it selects from a hand-maintained list of addresses. Each destination is a separate deploy-time setting: one for the main provider node, one for the Amul network, one for the booking node, one for the Vistaar network, one for the Maharashtra benefit-transfer node. Level 2 doesn't discover anything either — it matches a string against a list compiled into the node.
-
-The request does carry a provider identifier and URL in its header, but those are *asserted* by the sender, not the result of a lookup, and nothing verifies them.
+Level 1 doesn't discover anything — as above, it doesn't even choose a destination. Level 2 matches a string against a list compiled into the node. The request does carry a provider id and URL in its header, but those are *asserted* by the sender and nothing verifies them.
 
 | Beckn expects | Today |
 |---|---|
-| a registry to find participants | addresses hardcoded in configuration |
-| a gateway that broadcasts one search to many providers | one fixed address per tool |
+| a registry to find participants | one address in configuration |
+| a gateway that broadcasts one search to many providers | every search goes to that one address |
 | signatures checked against registered keys | no verification |
 | participants joining and leaving | redeploy with a new setting |
 
-Two consequences worth carrying into the redesign. **Adding a provider is a config change and a release**, not an onboarding step. And because there is no gateway fan-out, **a search can only ever reach one provider** — the network cannot grow beyond what someone wired in by hand.
+Because there is no gateway fan-out, **a search can only ever reach one provider.** The network cannot grow beyond what someone wired in by hand.
+
+**Across the three products** the picture is a hand-wired mesh, not a network:
+
+```
+   BharatVistaar assistant ──> its own provider node
+                           ──> "MahaVistaar" tool ──> the same address (see §11)
+
+   MahaVistaar assistant   ──> a shared node (never examined)
+                           ──> BharatVistaar, MahaDBT, AgriStack, agri-services
+
+   Amul assistant          ──> Vistaar network   (weather, mandi, schemes)
+                           ──> Amul network      (documents, union schemes)
+                           ──> Amul booking node (call bookings)
+```
+
+Every arrow is a deployment setting. The traffic is genuinely cross-organisational — Amul farmers really do get Vistaar's mandi prices — but no participant can name, find or verify any other. Amul is the clearest case: it operates no node at all, yet is a client of three.
 
 ### What comes back
 
-The assistant takes whatever the source returned, writes an answer in the farmer's language, and streams it back sentence by sentence so the farmer sees it appear as it's written rather than waiting for the whole thing.
-
-```mermaid
-graph LR
-  F["Farmer asks a question<br/>(text or voice, any language)"] --> A["AI assistant<br/>decides where to look"]
-  A -->|"Beckn request,<br/>tagged with a category"| N["Provider node<br/>routes by category"]
-  N --> DB[("Content table")]
-  N -->|"live, per request"| Gov[("Government systems:<br/>Agmarknet prices,<br/>IMD / Mausamgram weather")]
-  A -->|"direct, no Beckn"| V[("Vector database:<br/>documents, videos")]
-  A -->|"direct, no Beckn"| Other[("Other services:<br/>fertiliser, soil health,<br/>application status")]
-  DB --> A
-  Gov --> A
-  V --> A
-  Other --> A
-  A --> R["Answer written in the<br/>farmer's language, streamed back"]
-```
+The assistant takes whatever the source returned, writes the answer in the farmer's language, and streams it back sentence by sentence rather than making them wait for the whole thing.
 
 ---
 
@@ -308,8 +270,8 @@ graph LR
 |---|---|---|
 | Agriculture departments, ICAR, scheme owners | Scheme details, advisory articles, videos, scholarships | nothing |
 | Internal content team | Scheme guideline documents and circulars | nothing |
-| Government systems (Agmarknet, IMD, Mausamgram, insurance) | nothing — they expose live data on request | nothing |
-| **The AI assistant** | nothing | **everything** — it is the only thing that searches |
+| Government systems (Agmarknet, IMD, Mausamgram, insurance, PM-Kisan, SHC) | nothing — they answer live, on request | nothing |
+| **The AI assistant** | nothing | **everything** — it is the only thing that searches, and the only thing that transacts |
 | **The other two products** | nothing | each other's catalogs, over Beckn |
 | Farmers | nothing | nothing directly — they ask the assistant |
 
@@ -356,9 +318,11 @@ The reason for this document. Restated plainly:
 
 8. **Decide what belongs on the network.** Today the document/video search deliberately bypasses Beckn while structured content goes through it. That split happened by accident rather than design. Choose it consciously this time.
 
-8b. **Nobody publishes in Beckn format, and no content is actually held.** Publishers send flat fields in four different shapes; the node converts to Beckn at query time. Files are never uploaded — only links to the publisher's own server, which nothing validates, so dead links are advertised indefinitely. Two questions for the redesign: should publishers produce Beckn structure directly, and should the network hold content or keep pointing at other people's servers?
+9. **Nobody publishes in Beckn format, and no content is actually held.** Publishers send flat fields in four shapes; the node converts at query time. Files are never uploaded — only links to the publisher's server, which nothing validates, so dead links are advertised indefinitely. Two questions: should publishers produce Beckn structure directly, and should the network hold content or keep pointing elsewhere?
 
-9. **Only one product operates a node, but all three use the network.** BharatVistaar runs the only provider node examined here. MahaVistaar uses a shared node nobody has looked at. Amul runs no node yet is a client of several — it queries the Vistaar network for weather, prices and schemes, its own Amul network for documents and union schemes, and a separate node to place call bookings. The products also query each other. So the network already has real cross-traffic; it just has no registry, no signing and no discovery underneath it. That makes the redesign more urgent, not less.
+10. **Only one product operates a node, but all three use the network.** BharatVistaar runs the only node examined here; MahaVistaar uses a shared node nobody has looked at; Amul runs none yet is a client of three. The products also query each other. The cross-traffic is real — it just has no registry, no signing and no discovery underneath it. That makes the redesign more urgent, not less.
+
+11. **Two unrelated routing schemes, and the riskier one is the weaker.** Search routes on a category label; transactions route on a provider id in the order. Neither knows about the other, and both fall through to a default handler rather than rejecting what they don't recognise. The transactional flows carry identity and have real consequences — a grievance filed, a payment status disclosed — yet run on the same unsigned, unverified transport. An OTP proves the farmer; nothing proves the machines. See §10.
 
 ---
 
@@ -398,7 +362,19 @@ For engineers. The rest of the document deliberately avoids these.
 | `pmfby` (or any code starting `pmfby`) | crop insurance service |
 | *unmatched* | general search service |
 
-> Two traps here. `schemes-agri` and `icar-schemes` do **not** go where their names suggest. And the assistant sends `scheme-agri-qdrant`, which matches nothing — it lands in the unmatched row.
+> Three traps here. `schemes-agri` and `icar-schemes` do **not** go where their names suggest. The assistant sends `scheme-agri-qdrant`, which matches nothing — it lands in the unmatched row. And the first three rows are matched on `.name` (case-sensitive) while the rest are matched on `.code` — so a caller sending the right value in the wrong field silently misses.
+
+**The full route list** (provider node)
+
+| Route | Notes |
+|---|---|
+| `POST /mobility/search` | the one that matters — routed by category, above |
+| `POST /mobility/init` | routed by `order.provider.id`, **not** by category — see §10 |
+| `POST /mobility/status` | application status |
+| `POST /mobility/select`, `/confirm`, `/rating` | |
+| `POST /dsep/{search,select,init,confirm,rating}` | legacy set, still running |
+| `POST /vistaar-proxy` | CORS proxy for a browser test app |
+| `POST /submit-feedback/:id` | |
 
 **Outbound calls the provider node makes**
 
@@ -412,7 +388,7 @@ Market and station reference data comes from a separate database the node connec
 
 **Assistant-facing** — `GET /api/chat/` streams the answer as server-sent events. Supporting routes: `POST /api/token` (plus `/api-key` and `/play-integrity`), `POST /api/transcribe/`, `POST /api/tts/`, `POST /api/telemetry/{events,feedback,error}`.
 
-**Configuration trap:** the variable named `BAP_ENDPOINT` holds the **provider node's** URL. The assistant is the BAP; that setting is where it sends to, not what it is.
+**Configuration trap:** the variable named `BAP_ENDPOINT` holds the URL the assistant **sends to**, not its own. The assistant is the BAP; this is its destination. Every Beckn tool in BharatVistaar uses this one setting — including the tool named for cross-network calls to MahaVistaar. What it actually points at was not verified; see §11.
 
 ---
 
@@ -445,23 +421,9 @@ Market and station reference data comes from a separate database the node connec
 
 It goes live on insertion. No review step follows.
 
-**Note what this is not.** The publisher does not send Beckn format. They send flat fields, and the node converts them into a Beckn catalog only when someone searches. Nobody outside the node ever sees or produces Beckn structure.
+Note the two things this example makes concrete: the shape is **flat, not Beckn**, and `url` is **a pointer, not an upload** — the PDF stays on the publisher's server.
 
-**And no file is uploaded.** `url` is a pointer to the publisher's own server — the PDF or video stays there. The node stores metadata and a link, nothing more. If the department deletes that file, the node keeps advertising it and the farmer gets a dead link; nothing checks or refreshes these URLs. The only genuine file upload is for thumbnail images.
-
-**There are four different publish shapes**, none of them Beckn:
-
-| Content type | How it's published | What's stored |
-|---|---|---|
-| Advisory article | flat JSON, or a CSV row | fields + link |
-| PDF | same | fields + link — file stays external |
-| Video | same | fields + link |
-| Scheme details | same, or a scheme-specific endpoint | fields in the content table |
-| Scholarship | its own endpoint and its own 23-field shape | its own table |
-
-Scholarships don't share the content shape at all — different endpoint, different fields (amount, deadline, eligibility, selection criteria, contact), different table.
-
-**Don't confuse this with the scheme PDFs the assistant quotes from.** Those go through the knowledge catalog below: real file uploads, processed, reviewed by two people, indexed by meaning — and never touching Beckn. Same word "scheme", two unrelated pipelines.
+**Don't confuse this with the scheme PDFs the assistant quotes from.** Those go through the knowledge catalog: real uploads, reviewed by two people, indexed by meaning, never touching Beckn. Same word "scheme", two unrelated pipelines.
 
 ### Publishing in bulk
 
@@ -539,13 +501,57 @@ Note two things. The action says `on_search`, but this is a plain response body,
 
 ---
 
+## 10. The other half — transactions, not search
+
+Everything above is about *finding* things. But **13 of the assistant's 31 tools don't search at all.** They act on behalf of one identified farmer, and the document would be misleading without them.
+
+**What they do**
+
+| Group | Tools | What happens |
+|---|---|---|
+| Application status | PM-Kisan, PMFBY, Soil Health Card, SMAM | "has my payment come through?" — checks a real application against a government system |
+| Grievances | PM-Kisan (3), PMFBY (4) | files a complaint, then tracks it |
+
+**How they differ from search — this is the important part:**
+
+| | Search | These |
+|---|---|---|
+| Who it's about | nobody — a general question | **one named farmer** |
+| Identity | none needed | **OTP to the registered mobile** |
+| Turns | one | **several** — send OTP, then verify, then act |
+| Effect | reads | **writes** — a grievance is filed and stays filed |
+| Beckn action | `/search` | **`/init`, `/status`, `/confirm`** |
+
+**How they're routed.** Not by category. The `/init` route reads **`order.provider.id`** and the first item's id instead:
+
+| What the order says | Handler |
+|---|---|
+| provider `pmfby-agri` + item `pmfby` | crop insurance |
+| provider `shc-discovery` | soil health card |
+| any other order | **PM-Kisan** |
+| no order at all | generic |
+
+So the system has **two unrelated routing schemes** — search routes on a category label, transactions route on a provider id — and neither knows about the other. Note the third row: an order that matches nothing specific is handed to PM-Kisan rather than rejected. Same failure mode as the search `default:`, different key.
+
+**Why this matters for the re-architecture.** These flows are the ones with real consequences — money, identity, a filed complaint — and they run on the same unsigned, unverified, single-address transport as everything else. An OTP proves the farmer's phone; **nothing proves the two machines to each other.** For search that's a quality problem. Here it isn't.
+
+Also worth noting: Beckn's `/init` and `/confirm` were designed for placing orders in a marketplace. They're being used here to check government application status and file grievances. It works, but the vocabulary doesn't fit what's actually happening, and that mismatch is worth resolving deliberately rather than inheriting.
+
 ---
 
-## 9. What this document doesn't cover
+## 11. What this document doesn't cover
 
 - **MahaVistaar's network node** — run from a shared repository that was not examined. Don't assume it behaves like BharatVistaar's.
 - **The underlying network component** — the off-the-shelf Beckn software the provider node runs behind was never inspected. Claims that signing and registry lookup "happen there" are assumptions.
 - **The general knowledge search service** — an external hybrid-search service holding the bulk of advisory content, treated here as a black box.
+
+**Three specific things worth resolving — observed in code, not confirmed:**
+
+- **Does the "MahaVistaar" cross-network call actually leave BharatVistaar?** That tool sends the *same* category label to the *same* configured address as an ordinary local scheme lookup. Nothing in the request marks it as destined for Maharashtra. If that address is BharatVistaar's own node, the call is answered locally and the cross-network hop never happens; if it's a gateway, it works as intended. **The deciding fact is one configuration value, not code** — check what it's set to. Worth doing: the tool's name asserts something the request doesn't.
+
+- **Where do the seed-availability and crop-registry searches go?** Both post to that same address, but neither sends a category label the node's list recognises — one identifies itself by provider id instead. On the node examined here they would fall through to generic search. They may target a newer deployment; that wasn't established.
+
+- **Which node answers any of it.** Every claim about routing in this document describes the one provider node that was read. Whether the configured address actually points at *that* node was never confirmed.
 
 ---
 
