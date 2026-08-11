@@ -4,13 +4,17 @@ Internal architecture documentation for the OpenAgriNet platform.
 
 ## Contents
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — how the system works today across the three deployments
+- **[OVERVIEW.md](OVERVIEW.md)** — **start here.** The whole system in ten minutes: what it is,
+  how a question gets answered, what the tools do, how it differs from real Beckn, and the three
+  problems worth fixing first.
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — the full trace. How the system works today across the three deployments
   (BharatVistaar, MahaVistaar, Amul): module map, request flow, catalog publish/discover,
   telemetry, auth, and the gap list for re-architecting onto the current Beckn protocol.
 
 ## Viewing the diagrams
 
-`ARCHITECTURE.md` uses [Mermaid](https://mermaid.js.org/) diagrams in ` ```mermaid ` fences.
+Both docs use [Mermaid](https://mermaid.js.org/) diagrams in ` ```mermaid ` fences.
 GitHub renders these natively — just open the file here in the browser.
 
 If you are reading it locally and see raw code instead of diagrams, your viewer lacks Mermaid support:
