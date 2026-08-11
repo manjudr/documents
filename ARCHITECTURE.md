@@ -14,13 +14,37 @@ All three are the same thing wearing different clothes: an **AI assistant that a
 |---|---|---|---|
 | Who uses it | Farmers nationally, via central and state agriculture departments | Farmers in Maharashtra, under the state's POCRA programme | Dairy farmers in the Amul network |
 | How they reach it | Website and Android/iOS app | Website and iOS app | Mostly by **phone call**, in Gujarati |
-| What it answers | Schemes, crop advice, mandi prices, weather, insurance, fertiliser guidance | Same, focused on Maharashtra schemes | Dairy and farming guidance |
+| Tools the assistant has | **31** | **25** | **9** |
 | Runs its own provider node | **Yes** | No — uses a shared node run elsewhere | No |
 | Uses the Beckn network | Yes | Yes | **Yes** — as a client of others |
 
-**The short version:** BharatVistaar is the full implementation and the only one operating its own provider node. MahaVistaar is a state variant. Amul is voice-first and dairy-specific.
+**What each one actually does.** They are less alike than "same codebase, different clothes" suggests:
 
-**They also call each other.** All three are Beckn clients of one another — MahaVistaar can query BharatVistaar, BharatVistaar can query MahaVistaar, and Amul gets its weather, mandi prices and scheme information by querying the Vistaar network rather than building its own. So "is X on the network" has two answers: whether it *operates* a node, and whether it *uses* one. Only BharatVistaar does the first; all three do the second.
+| Capability | BharatVistaar | MahaVistaar | Amul |
+|---|---|---|---|
+| Scheme information | ✅ | ✅ POCRA, MahaDBT | ✅ union schemes only |
+| Advisory documents / video search | ✅ | ✅ | ✅ |
+| Weather | ✅ | ✅ | via Vistaar¹ |
+| Mandi prices | ✅ | ✅ | via Vistaar¹ |
+| Crop insurance (PMFBY) | ✅ | — | — |
+| Pest / disease | ✅ search + image diagnosis | ✅ pest detection | — |
+| Fertiliser, seed availability, soil health | ✅ | — | — |
+| Application status checks | ✅ PM-Kisan, PMFBY, SHC, SMAM | — | — |
+| Grievance filing | ✅ PM-Kisan, PMFBY | — | — |
+| Farmer registry / land records | — | ✅ AgriStack | ✅ farmer + animal records |
+| Local staff contacts | — | ✅ | — |
+| **Milk collection records** | — | — | ✅ |
+| **Animal health, vet callback** | — | — | ✅ |
+| **Loan eligibility** | — | — | ✅ |
+| Remembers the farmer between sessions | — | ✅ profile + memory | — |
+
+¹ Feature-flagged. With the network flag off, Amul has no weather or mandi capability at all.
+
+**The short version:** BharatVistaar is the broadest and the only one running its own node. MahaVistaar is a state variant that adds Maharashtra systems and is the only one that remembers a farmer across sessions. **Amul is not a cut-down Vistaar** — it is a dairy operations assistant, and most of what it does (milk collection, animal health, loans) exists nowhere else.
+
+**They also call each other.** MahaVistaar can query BharatVistaar, BharatVistaar has a tool for querying MahaVistaar (see §11), and Amul gets weather, mandi prices and scheme information from the Vistaar network rather than building its own. So "is X on the network" has two answers: whether it *operates* a node, and whether it *uses* one. Only BharatVistaar does the first; all three do the second.
+
+**No shared databases.** Each product has its own deployment and its own stores. What they share is reached over the network, not read from a common database — Amul gets Vistaar's mandi prices by asking, not by querying Vistaar's tables. (MahaVistaar's stores were never examined, so this is confirmed for BharatVistaar and Amul only.)
 
 ---
 
