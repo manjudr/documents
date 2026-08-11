@@ -95,7 +95,7 @@ These are the same three sources introduced in §2, now seen from the publishing
 3. **Log in.** Get a JWT carrying `role=provider`.
 4. **Push content.** Pick whichever route matches what you have in hand (all four write to the same place).
 5. **The guard checks** JWT + role. Publishing is the only authenticated half of this system.
-6. **The node writes** via GraphQL → `insert_contents` → a flat row in Postgres.
+6. **The node writes** via GraphQL → `insert_Content` → a flat row in Postgres.
 7. **It is live on insert.** No review queue, no second pair of eyes, no item-level check.
 8. **The file never moves.** Only its URL was stored — and nothing ever checks that URL.
 
@@ -109,7 +109,7 @@ These are the same three sources introduced in §2, now seen from the publishing
 | `POST /provider/icarcontent` | one item, scheme-shaped | adds scheme fields like eligibility and benefits |
 
 - Two of the four are the same operation in different wrappers — CSV vs JSON array.
-- **Scholarships are separate.** `POST /provider/scholarship` has its own 23-field shape and its own table. It is not content.
+- **Scholarships are separate.** `POST /provider/scholarship` has its own 21-field shape and its own table. It is not content.
 - **Supporting routes:** `/provider/collection` and `/contentCollection` group items; `/provider/uploadImage` handles thumbnails. Each has edit and delete variants.
 
 **What actually gets stored — a pointer, not the thing:**
@@ -123,6 +123,16 @@ These are the same three sources introduced in §2, now seen from the publishing
 
 - Only **thumbnails** are genuinely uploaded.
 - Everything else is a URL, and **nothing checks those URLs**. Delete the PDF and the node keeps advertising it.
+
+**A catch that undermines all of the above:** what you can publish is not what search can find.
+
+- Scheme search narrows the content table on two columns — one naming the use case, one naming the scheme.
+- **No publish route sets either of them.** They appear in no insert and no update anywhere in the node.
+- The six columns holding the actual scheme text — intro, benefits, eligibility, support, how to apply, other — are the same: **read at search time, written by nothing.**
+- So a row published through the documented API arrives with all of these empty, and the scheme search that was meant to find it never will.
+- The rows that *do* answer scheme questions today were loaded some other way, **outside every endpoint in §7.**
+
+> This is the sharpest thing in this document. There are effectively **two publishing stories** for one table — the API described above, and an undocumented path that populates the columns that matter. Only the first has a route, a guard and a shape. Verified in the node's own source; see §6.
 
 **Three facts about format, which matter most for the re-architecture:**
 
@@ -219,7 +229,7 @@ sequenceDiagram
   N-->>D: JWT, role=provider
   D->>N: POST /provider/content<br/>{title, category, language, LINK}
   Note over N: guard checks JWT + role
-  N->>G: mutation insert_contents
+  N->>G: mutation insert_Content
   G->>DB: INSERT flat row
   DB-->>N: id
   N-->>D: 200 — live immediately
@@ -523,39 +533,9 @@ sequenceDiagram
 
 ### Why none of this counts as discovery
 
-- **There is no registry.** Nothing ever looks up who is on the network.
-- **Choosing a tool discovers nothing** — it doesn't even choose a destination.
-- **The node just matches a string** against a list compiled into it.
-- The request *does* carry a provider id and URL in its header, but those are **asserted by the sender** and nothing verifies them.
+Everything above is content lookup. **No step in it ever asks who is on the network** — the tool doesn't choose a destination, and the node only matches a string against a list compiled into it. The request does carry a provider id and URL in its header, but the sender asserts those and nothing verifies them.
 
-| Beckn expects | Today |
-|---|---|
-| a registry to find participants | one address in configuration |
-| a gateway that broadcasts one search to many providers | every search goes to that one address |
-| signatures checked against registered keys | no verification |
-| participants joining and leaving | redeploy with a new setting |
-
-**Because there is no gateway fan-out, a search can only ever reach one provider.** The network cannot grow beyond what someone wired in by hand.
-
-**Across the three products** the picture is a hand-wired mesh, not a network:
-
-```mermaid
-graph LR
-  BV["BharatVistaar"] --> BVN[("its own node")]
-  BV -.->|"'MahaVistaar' tool —<br/>same address? see §10"| BVN
-
-  MV["MahaVistaar"] --> SH[("a shared node<br/>never examined")]
-  MV --> BV
-  MV --> DBT[("MahaDBT, AgriStack")]
-
-  AM["Amul<br/>runs no node"] --> VN[("Vistaar network<br/>weather, mandi, schemes")]
-  AM --> AN[("Amul network<br/>documents")]
-  AM --> AB[("Booking node")]
-```
-
-- **Every arrow is a deployment setting**, not a discovered route.
-- The traffic is genuinely cross-organisational — Amul farmers really do get Vistaar's mandi prices.
-- But **no participant can name, find or verify any other.** Amul is the clearest case: it runs no node at all, yet is a client of three.
+Because there is no gateway to fan a search out to several providers, **a search can only ever reach the one address in configuration.** The full comparison against what Beckn expects is §6.
 
 ### What comes back to the farmer
 
@@ -596,6 +576,8 @@ The reason for this document. Restated plainly:
 
 4. **There's no directory of participants.** Real Beckn has a registry you consult to find out who's on the network. Here, the assistant talks to exactly one provider address, fixed in configuration. It cannot discover anyone else.
 
+   Worth being precise about what that costs, because it is the opposite of what "no registry" usually suggests. It does **not** mean anyone can join — joining means an admin approving an organisation by hand. It means nobody can be **found**. A second provider node could go live tomorrow and no assistant would ever reach it; someone would have to edit a configuration value and ship a release. Open to read, closed to join, impossible to discover.
+
 5. **Everything appears under one provider name.** All knowledge results come back attributed to a single provider, regardless of who actually published them. A real network needs each department to appear as itself.
 
 6. **The catalog isn't really a catalog.** There is no stored notion of catalogs or items — just flat content rows reshaped into Beckn's format at the moment of answering. A provider record does exist, but it carries only an organisation name and a source code: no endpoint, no key, no domain. Enough for an account, not enough for a network participant.
@@ -604,13 +586,37 @@ The reason for this document. Restated plainly:
 
 8. **One search path is silently broken.** The assistant's scheme-document search sends a category label that the provider node doesn't recognise, so it quietly falls through to generic search instead. Verified on both sides. Fix it or remove it — don't carry it forward.
 
-9. **Decide what belongs on the network.** Today the document/video search deliberately bypasses Beckn while structured content goes through it. That split happened by accident rather than design. Choose it consciously this time.
+9. **The publish API cannot write the fields that search filters on.** Verified in code. Scheme search narrows the content table on two columns, `usecase` and `scheme_id` — and **no publish route sets either one**. Neither appears in any insert or update. The same is true of the six columns holding the actual scheme text. So anything published through the documented API arrives with those columns empty and is invisible to the search that was meant to find it. The rows that *do* answer scheme questions were loaded some other way, outside every endpoint in §7. Two separate publishing stories, and only one of them has an API.
 
-10. **Nobody publishes in Beckn format, and no content is actually held.** Publishers send flat fields in four shapes; the node converts at query time. Files are never uploaded — only links to the publisher's server, which nothing validates, so dead links are advertised indefinitely. Two questions: should publishers produce Beckn structure directly, and should the network hold content or keep pointing elsewhere?
+10. **Decide what belongs on the network.** Today the document/video search deliberately bypasses Beckn while structured content goes through it. That split happened by accident rather than design. Choose it consciously this time.
 
-11. **Only one product operates a node, but all three use the network.** BharatVistaar runs the only node examined here; MahaVistaar uses a shared node nobody has looked at; Amul runs none yet is a client of three. The products also query each other. The cross-traffic is real — it just has no registry, no signing and no discovery underneath it. That makes the redesign more urgent, not less.
+11. **Nobody publishes in Beckn format, and no content is actually held.** Publishers send flat fields in four shapes; the node converts at query time. Files are never uploaded — only links to the publisher's server, which nothing validates, so dead links are advertised indefinitely. Two questions: should publishers produce Beckn structure directly, and should the network hold content or keep pointing elsewhere?
 
-12. **Two unrelated routing schemes, and the riskier one is the weaker.** Search routes on a category label; transactions route on a provider id in the order. Neither knows about the other, and both fall through to a default handler rather than rejecting what they don't recognise. The transactional flows carry identity and have real consequences — a grievance filed, a payment status disclosed — yet run on the same unsigned, unverified transport. An OTP proves the farmer; nothing proves the machines. See §9.
+12. **Only one product operates a node, but all three use the network.** BharatVistaar runs the only node examined here; MahaVistaar uses a shared node nobody has looked at; Amul runs none yet is a client of three. The products also query each other. The cross-traffic is real — it just has no registry, no signing and no discovery underneath it. That makes the redesign more urgent, not less.
+
+13. **Two unrelated routing schemes, and the riskier one is the weaker.** Search routes on a category label; transactions route on a provider id in the order. Neither knows about the other, and both fall through to a default handler rather than rejecting what they don't recognise. The transactional flows carry identity and have real consequences — a grievance filed, a payment status disclosed — yet run on the same unsigned, unverified transport. An OTP proves the farmer; nothing proves the machines. See §9.
+
+### The picture across the three products
+
+A hand-wired mesh, not a network — this is gap 12 above, drawn:
+
+```mermaid
+graph LR
+  BV["BharatVistaar"] --> BVN[("its own node")]
+  BV -.->|"'MahaVistaar' tool —<br/>same address? see §10"| BVN
+
+  MV["MahaVistaar"] --> SH[("a shared node<br/>never examined")]
+  MV --> BV
+  MV --> DBT[("MahaDBT, AgriStack")]
+
+  AM["Amul<br/>runs no node"] --> VN[("Vistaar network<br/>weather, mandi, schemes")]
+  AM --> AN[("Amul network<br/>documents")]
+  AM --> AB[("Booking node")]
+```
+
+- **Every arrow is a deployment setting**, not a discovered route.
+- The traffic is genuinely cross-organisational — Amul farmers really do get Vistaar's mandi prices.
+- But **no participant can name, find or verify any other.** Amul is the clearest case: it runs no node at all, yet is a client of three.
 
 ---
 
