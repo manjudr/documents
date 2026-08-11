@@ -1,279 +1,210 @@
-# OpenAgriNet — How the system works today
+# OpenAgriNet — How publish and discover work
 
-Traced 2026-08-11 against the cloned repos. Purpose: a complete, accurate picture of the **current** system as the baseline for re-architecting onto the latest Beckn protocol.
-
-**Confidence levels used below**
-- ✅ **Verified** — read in code, file:line cited.
-- ⚠️ **Inferred** — deduced from config/naming, not confirmed by reading the component itself.
-- ❌ **Not traced** — repo not read.
+A plain-language explanation of how the platform works today, written as the baseline for moving onto the current Beckn protocol.
 
 ---
 
-## 1. What the three things are
+## 1. The three products
+
+All three are the same thing wearing different clothes: an **AI assistant that answers farmers' questions** in their own language, by voice or text. They are built from one common codebase and then customised.
 
 | | **BharatVistaar** | **MahaVistaar** | **Amul** |
 |---|---|---|---|
-| Who it serves | Central/state govt farmers | Maharashtra govt (POCRA) farmers | Amul dairy farmers |
-| Channel | Web + Android/iOS app | Web + iOS app | Web + voice (phone) |
-| Orchestrator repo | `bharat-oan-api` | `mh-oan-api` (self-named `sunbird-va-api`) | `amul-oan-api` |
-| Beckn node | ✅ own repo `bharat-provider-backend` | ❌ shared org-wide repo — **not traced** | **none** |
-| Doc-ingestion (RAG) pipeline | ✅ yes (Temporal) | none | none |
-| Voice | ✅ | ✅ | ✅ (primary channel, Gujarati) |
-| Telemetry stack | ✅ (all three have identical UI/Processor/Backend) | ✅ | ✅ |
+| Who uses it | Farmers nationally, via central and state agriculture departments | Farmers in Maharashtra, under the state's POCRA programme | Dairy farmers in the Amul network |
+| How they reach it | Website and Android/iOS app | Website and iOS app | Mostly by **phone call**, in Gujarati |
+| What it answers | Schemes, crop advice, mandi prices, weather, insurance, fertiliser guidance | Same, focused on Maharashtra schemes | Dairy and farming guidance |
+| Connected to the Beckn network | **Yes** — it has its own provider node | Yes, but through a shared node run elsewhere | **No** — not on the network at all |
 
-All three Orchestrators are **forks of the same Sunbird Virtual Assistant FastAPI base** — identical `agents/ app/ helpers/ main.py` layout. They diverge only in tools, prompts, and which backends they call.
+**The short version:** BharatVistaar is the full implementation. MahaVistaar is a state variant. Amul is a voice-first deployment that skips the network entirely.
 
 ---
 
-## 2. Module map (what each repo actually is)
+## 2. Start here: there are two catalogs, not one
+
+This is the single thing that makes everything else confusing if you miss it. When someone says "the catalog," they could mean either of two unrelated systems.
 
 ```mermaid
 graph TB
-  subgraph Client["Client layer"]
-    Web["UI — React 19 + Vite + TanStack Router<br/>Bun, Radix, FingerprintJS"]
-    App["App — React Native + Expo<br/>thin WebView shell over UI"]
-    Phone["Telephony provider (RAYA)<br/>Amul voice channel"]
+  subgraph C1["CONTENT CATALOG — the Beckn one"]
+    direction TB
+    P1["Published by:<br/>agriculture departments, ICAR,<br/>scheme owners"]
+    W1["What: scheme details, advisory<br/>articles, videos, scholarships"]
+    S1[("Stored as: structured rows<br/>in one database table")]
+    P1 --> W1 --> S1
   end
 
-  subgraph Brain["Intelligence layer"]
-    Orc["Orchestrator / AI — FastAPI<br/>Pydantic-AI agent + ~17 tools"]
-    Voice["Voice — FastAPI<br/>separate service, streaming text/plain"]
+  subgraph C2["KNOWLEDGE CATALOG — the AI one"]
+    direction TB
+    P2["Published by:<br/>the internal content team"]
+    W2["What: scheme guideline PDFs,<br/>government circulars, manuals"]
+    S2[("Stored as: meaning-indexed<br/>text in a vector database")]
+    P2 --> W2 --> S2
   end
 
-  subgraph Data["Data + protocol layer"]
-    Beckn["Beckn BPP — NestJS<br/>bharat-provider-backend"]
-    Pipeline["Doc-ingestion-pipeline<br/>FastAPI + Temporal"]
+  subgraph C3["LIVE DATA — nobody publishes this"]
+    direction TB
+    W3["Mandi prices, weather forecasts"]
+    S3[("Not stored — fetched from<br/>government systems on demand")]
+    W3 --> S3
   end
-
-  subgraph Obs["Telemetry stack"]
-    TProc["Telemetry-Processor — Node.js ETL"]
-    TBack["Telemetry-Backend — Express API"]
-    TUI["Telemetry-UI — dashboard"]
-  end
-
-  Web --> Orc
-  App --> Web
-  Phone --> Voice
-  Orc --> Beckn
-  Orc -.reads.-> Pipeline
-  Orc --> TProc
-  Voice --> TProc
-  TProc --> TBack --> TUI
 ```
 
----
-
-## 3. Roles in Beckn terms
-
-| Beckn role | What plays it here | Verified? |
-|---|---|---|
-| **BAP** (searches) | The **Orchestrator**. Builds the Beckn envelope, POSTs to `$BAP_ENDPOINT/search`. | ✅ `agents/tools/search.py:318-337` |
-| **BPP** (answers) | The **NestJS Beckn backend**, running as/behind Docker image `beckn-onix-network-provider:latest_v1.0.1`. | ✅ `Beckn/docker-compose.yml` |
-| **Provider** (publishes) | A JWT account with role `provider` — a govt dept, ICAR, etc. | ✅ `provider.controller.ts` |
-| **Gateway / Registry** | **No code anywhere in these repos.** | ⚠️ presumed inside external beckn-onix |
-
-> **Naming trap:** the env var is called `BAP_ENDPOINT`, but it points at the **BPP's** search URL. The Orchestrator *is* the BAP; `BAP_ENDPOINT` is where the BAP sends to.
+They have **different publishers, different approval rules, different storage, and completely different search mechanics**. A request to "add a new scheme to the catalog" means two different jobs depending on which one is meant.
 
 ---
 
-## 4. The main flow — a farmer asks a question
+## 3. Publish — what goes in, and how
 
-```mermaid
-sequenceDiagram
-  autonumber
-  participant U as Farmer (Web/App)
-  participant O as Orchestrator (BAP)
-  participant B as Beckn BPP (NestJS)
-  participant PG as Postgres (Content, via Hasura)
-  participant X as External APIs<br/>(Agmarknet, IMD, oan-index)
-  participant V as Marqo / Qdrant
-  participant T as Telemetry
+### The content catalog
 
-  U->>O: POST /api/token (Play Integrity / API key) → JWT
-  U->>O: GET /api/chat/?query=...&session_id=... (JWT)
-  Note over O: SSE stream opens (text/event-stream)
-  O->>O: moderation → language detect → agent run
-  O->>O: agent picks tool(s)
+**Who publishes:** external organisations — state agriculture departments, ICAR, scheme-owning bodies. They register for an account and are approved as an organisation.
 
-  alt Beckn-routed tools (mandi, weather, schemes, pmfby, knowledge)
-    O->>B: POST $BAP_ENDPOINT/search {context, message.intent}
-    B->>B: switch on intent.category.descriptor
-    B->>PG: Hasura GraphQL query
-    B->>X: live HTTP (Agmarknet / IMD / oan-index)
-    B-->>O: {context, message.catalog} SYNCHRONOUSLY (no /on_search)
-  else Direct tools (RAG, GFR, maps, PM-Kisan/SHC/SMAM status)
-    O->>V: vector search (Marqo sunbird-va-index / Qdrant)
-    O->>X: direct 3rd-party REST
-  end
+**What they publish:**
+- Scheme listings — name, who's eligible, what the benefit is, how to apply
+- Advisory content — crop guidance, farming practice articles
+- Videos
+- Scholarship listings
 
-  O-->>U: streamed answer chunks (SSE)
-  O->>T: background_tasks → POST telemetry (HMAC-JWT auth)
-```
+**How they publish it:** they log in and either fill in a form for a single item, or upload a spreadsheet to load hundreds at once. The spreadsheet has a fixed set of columns they must match.
 
-**The single most important deviation:** step "B-->>O" is a **plain synchronous HTTP response**. There is no `/on_search` route and no outbound callback to `bap_uri` anywhere in the codebase. Every Beckn action (`search`, `select`, `init`, `confirm`, `rating`, `status`) is collapsed into one request/response RPC. ✅ verified — `Beckn/src/app.controller.ts` has no `on_*` route.
+**Who approves it:** *nobody, at the item level.* An admin approves the **organisation** once. From that moment, anything that organisation uploads goes live immediately — there is no review queue, no second pair of eyes on individual content.
 
----
+**Where it lands:** a single table in a standard database. Notably, there are **no separate tables for providers, catalogs, or items**. When a search comes in, the Beckn-shaped response is assembled on the fly from those flat rows.
 
-## 5. Publish — how catalogs get filled
+### The knowledge catalog
 
-There are **two completely separate catalogs**. Conflating them is the most common mistake.
+**Who publishes:** the internal team, not external organisations.
 
-### 5a. Beckn content catalog (self-service, no per-item review)
+**What they publish:** long-form government documents — scheme guideline PDFs, circulars, operational manuals. The things too dense for a farmer to read, that the assistant needs to be able to quote from.
 
-```mermaid
-sequenceDiagram
-  participant P as Provider (JWT role=provider)
-  participant A as Admin
-  participant B as Beckn BPP
-  participant H as Hasura
-  participant PG as Postgres "Content" table
+**How it works:** the document goes through an automated pipeline that splits it into small passages and converts each passage into a numeric representation of its *meaning*. This is what lets the assistant find "the bit about eligibility" without anyone tagging it.
 
-  P->>B: POST /auth/registerUser
-  A->>B: PATCH /admin/approval/:id  ← account-level approval ONLY
-  P->>B: POST /auth/login → JWT
-  alt single item
-    P->>B: POST /provider/content
-  else bulk
-    P->>B: POST /provider/createBulkContent (CSV, fixed 28-col header)
-  else ICAR/scheme-flavoured
-    P->>B: POST /provider/icarcontent
-  end
-  B->>H: GraphQL mutation
-  H->>PG: INSERT — live immediately, no moderation
-```
+**Who approves it:** **two humans**, in sequence. A reviewer signs off after the document is processed, and then a superadmin promotes it to production. This is genuinely reviewed content, unlike the content catalog.
 
-| Endpoint | Purpose | Where |
-|---|---|---|
-| `POST /provider/content` | insert one row | `provider.controller.ts:20` → `hasura.service.ts:348-437` |
-| `POST /provider/createBulkContent` | CSV upload, row-by-row insert | `provider.controller.ts:146` → `provider.service.ts:80-127` |
-| `POST /provider/icarcontent` | scheme-shaped rows (`scheme_id`, `scheme_intro`, `scheme_benefits`…) | `provider.controller.ts:234` → `hasura.service.ts:1793-1813` |
-| `POST /provider/collection`, `/contentCollection`, `/scholarship`, `/uploadImage` | grouping, scholarship items, media | `provider.controller.ts:69,118,197,175` |
+**Where it lands:** a vector database for the passages, plus a summary list of available schemes that is cached separately. That cache is what lets a newly-added scheme become searchable **without redeploying the assistant**.
 
-- **Storage:** ONE Postgres table, `Content`, reachable only through Hasura GraphQL (`hasura.service.ts:1212-1234`).
-- **No `Item` / `Provider` / `Catalog` tables exist.** The Beckn `Item`/`Provider`/`Descriptor` JSON is synthesised at query time in `utils/generator.ts`.
-- **Review:** none per item. `admin.controller.ts` approves *accounts*, not content. Once approved, everything the account posts is live.
+### Live data
 
-### 5b. RAG scheme/document catalog (human-reviewed, Temporal-orchestrated)
-
-```mermaid
-sequenceDiagram
-  participant U as Uploader
-  participant DP as Doc-ingestion-pipeline (FastAPI)
-  participant TW as Temporal workflow
-  participant R as Reviewer
-  participant SA as Superadmin
-  participant Q as Qdrant
-  participant MC as Postgres master_catalog
-  participant RD as Redis snapshot
-  participant O as Orchestrator
-
-  U->>DP: upload PDF/doc
-  DP->>TW: start ingestion workflow
-  TW->>TW: parse → chunk → embed (intfloat/multilingual-e5-large, 1024-d)
-  R->>DP: POST /documents/{id}/approve-ingestion   (api.py:2686)
-  SA->>DP: POST /documents/{id}/approve-prod       (api.py:2749-2766)
-  DP->>Q: upsert vectors (activities.py:1209,1342)
-  DP->>MC: write row (master_catalog_pg.py:49)
-  DP->>RD: push master-catalog:{dev,live}:snapshot (:91,:315)
-  O-->>RD: fail-open read at runtime (helpers/master_catalog.py)
-```
-
-The Redis snapshot lets **new schemes appear without redeploying the Orchestrator** — it extends an otherwise hardcoded 13-scheme list in `helpers/scheme_qdrant_search.py`. If Redis is unreachable, the read fails *open* (falls back to the hardcoded list).
-
----
-
-## 6. Discover — how search actually resolves
-
-`POST /mobility/search` (and the older `/dsep/search`) branch on the intent category. ✅ verified against `app.controller.ts:68-133`:
-
-| `category.descriptor.name` / `.code` | Handler | Backing store |
-|---|---|---|
-| `knowledge-advisory` | `searchForIntentQuery` (`app.service.ts:378-469`) | external **oan-index**, hybrid vector search |
-| `Weather-Forecast` | `weatherforecastSearch` (`weatherforecast.service.ts:11-206`) | Postgres + live **IMD** API |
-| `Weather-Forecast-Mausamgram` | `masuamGramaWeatherForecastSearch` (`:208-266`) | Postgres + Mausamgram |
-| `schemes-agri` | **`handlePmKisanSearch`** (`app.service.ts:1949+`) | Postgres / external PM-Kisan |
-| `icar-schemes` | **`handleSearch`** (`app.service.ts:277-376`) | Postgres `Content` via Hasura |
-| `price-discovery` + item code `mandi` | `mandiSearch` (`mandi.service.ts:209-321`) | Postgres + live **Agmarknet** |
-| `pmfby` (or any code starting `pmfby`) | `handlePmfbySearch` | Postgres / external PMFBY |
-| **anything else** | falls through to `searchForIntentQuery` | oan-index |
-
-Non-Beckn discovery also exists and **bypasses the protocol entirely**: `search_documents` (Marqo `sunbird-va-index`), `search_video` (Qdrant `video_data_collection`), `search_pests_diseases`, plus direct-REST tools (GFR, maps/geocode, SHC/SMAM/PM-Kisan status, PMFBY grievance, NPSS, Sathi seed).
-
-### ⚠️ Confirmed routing gap
-`agents/tools/search.py` sends `category = SCHEME_AGRI_QDRANT_CATEGORY` (code `scheme-agri-qdrant`, `search.py:312,373,398`). **No case matches it** in the switch above — so it hits `default:` and is answered by the generic oan-index handler, not a Qdrant scheme search. Verified on both sides. Fix or delete this path before porting it forward.
-
----
-
-## 7. Telemetry flow
+Nobody publishes mandi prices or weather. Those are fetched in real time from government systems when a farmer asks. There is no catalog entry to maintain.
 
 ```mermaid
 graph LR
-  UI["UI / App"] -->|"POST /api/telemetry/{feedback,events,error}"| Orc["Orchestrator"]
-  Orc -->|"background_tasks → HTTP<br/>HMAC-SHA256 JWT auth"| Sink["Telemetry sink service"]
-  Sink --> WL[("Postgres winston_logs<br/>sync_status flag")]
-  WL -->|"scheduled batch ETL"| Proc["Telemetry-Processor (Node)"]
-  Proc --> Typed[("OE_ITEM_RESPONSE, Feedback,<br/>errors, sessions, devices, calls")]
-  Typed --> Back["Telemetry-Backend (Express)"]
-  Back --> Dash["Telemetry-UI dashboard"]
-  Orc -.->|"traces + user feedback scores"| LF["Langfuse"]
+  Dept["Agriculture dept /<br/>ICAR / scheme owner"] -->|"form or spreadsheet"| Portal["Provider portal"]
+  Portal -->|"live immediately,<br/>no item review"| DB[("Content table")]
+  Admin["Admin"] -.->|"approves the ORGANISATION,<br/>not the content"| Portal
+
+  Team["Internal content team"] -->|"upload PDF"| Pipe["Processing pipeline<br/>splits + indexes by meaning"]
+  Pipe --> Rev{"Reviewer<br/>approves"}
+  Rev --> Sup{"Superadmin<br/>promotes"}
+  Sup --> VDB[("Vector database")]
+  Sup --> Cache[("Cached scheme list")]
 ```
 
-- Ingest is **write-behind**: `background_tasks.add_task(send_telemetry, ...)` — never blocks the chat stream (`app/routers/telemetry.py`).
-- The processor polls `winston_logs WHERE sync_status = 0`, fans rows into typed tables, sets `sync_status = 1` (`Telemetry-Processor/index.js:167-190`). Event processors are **DB-configurable**, not hardcoded.
-- Telemetry-Backend exposes ~15 route groups including `GET /beckn-ext/stats` — the only place Beckn traffic is observable.
-- Langfuse runs in parallel for LLM tracing; chat feedback is also written back as a Langfuse score, guarded by a `qid` → `session_id` turn map.
+---
+
+## 4. Discover — how a search actually works
+
+### The farmer never searches
+
+This is the key point. There is no search box and no browsing. The farmer **asks a question in plain language** — typed or spoken, in their own language. Everything after that is the assistant's job.
+
+The assistant reads the question, works out what's being asked, and picks where to look. It has roughly seventeen different sources it can reach for.
+
+### Three different ways it looks things up
+
+**1. Structured lookup — for schemes and published content**
+The assistant sends a request across the Beckn network describing what it wants. The provider node reads the *category* of that request — "insurance", "mandi price", "ICAR scheme", "weather" — and routes it to the matching handler, which queries the database and returns matching rows dressed up in Beckn's catalog format.
+
+**2. Meaning-based search — for documents and videos**
+The assistant converts the farmer's question into the same kind of numeric meaning-representation used when the documents were indexed, then finds the passages that sit closest to it. This is why a farmer can ask "will I get money if my crop fails" and get back the right paragraph from an insurance scheme document that never uses those words.
+
+This search **does not go through Beckn at all.** The assistant queries the vector database directly.
+
+**3. Live call — for prices and weather**
+The assistant calls the government system directly and reports what comes back.
+
+### What comes back
+
+The assistant takes whatever the source returned, writes an answer in the farmer's language, and streams it back sentence by sentence so the farmer sees it appear as it's written rather than waiting for the whole thing.
+
+```mermaid
+graph LR
+  F["Farmer asks a question<br/>(text or voice, any language)"] --> A["AI assistant<br/>decides where to look"]
+  A -->|"Beckn request,<br/>tagged with a category"| N["Provider node"]
+  N --> DB[("Content table")]
+  N --> Gov[("Government systems:<br/>mandi prices, weather")]
+  A -->|"direct, no Beckn"| V[("Vector database:<br/>documents, videos")]
+  A -->|"direct, no Beckn"| Other[("Other services:<br/>fertiliser, soil health,<br/>application status")]
+  DB --> A
+  Gov --> A
+  V --> A
+  Other --> A
+  A --> R["Answer written in the<br/>farmer's language, streamed back"]
+```
 
 ---
 
-## 8. Auth
+## 5. Who publishes what, who discovers what
 
-| Path | Mechanism |
-|---|---|
-| `POST /api/token` | issues app JWT (`token.py:408`) |
-| `POST /api/token/play-integrity` | Google Play Integrity attestation — per-client service account, nonce replay-check in Redis, freshness window (`token.py:528, 234-397`) |
-| `POST /api/token/api-key` | static key for server-to-server (`token.py:501`) |
-| Every `/api/*` route | `Depends(get_current_user)` — JWT carries `mobile` + `channel` |
-| Beckn `/provider/*`, `/admin/*` | separate NestJS JWT (`/auth/login`), role-gated |
-| Beckn network layer | ❌ **no Ed25519 signing, no `Authorization`/`X-Gateway-Authorization` handling** |
+| | **Publishes** | **Discovers** |
+|---|---|---|
+| Agriculture departments, ICAR, scheme owners | Scheme details, advisory articles, videos, scholarships | nothing |
+| Internal content team | Scheme guideline documents and circulars | nothing |
+| Government systems (mandi, weather, insurance) | nothing — they expose live data | nothing |
+| **The AI assistant** | nothing | **everything** — it is the only thing that searches |
+| Farmers | nothing | nothing directly — they ask the assistant |
 
-`channel` in the JWT is how one Orchestrator deployment tells tenants apart (defaults to `"BharatVistaar"`).
-
----
-
-## 9. Who owns what data
-
-| Data | Store | Written by | Read by |
-|---|---|---|---|
-| Content / scheme items | Postgres `Content` (Hasura only) | Provider REST APIs | Beckn `/search` handlers |
-| Mandi + weather master data | Postgres (separate DB) | ops / sync jobs | `mandiSearch`, `weatherforecastSearch` |
-| Scheme documents (vectors) | Qdrant | Doc-ingestion-pipeline on prod-promote | `scheme_qdrant_search.py` — *currently unreachable, see §6* |
-| Master scheme list | Postgres `master_catalog` + Redis snapshot | Doc-ingestion-pipeline | `helpers/master_catalog.py` (fail-open) |
-| General knowledge | Marqo `sunbird-va-index` | Orchestrator ingestion | `search_documents` — bypasses Beckn |
-| Videos | Qdrant `video_data_collection` | ingestion | `search_video` — bypasses Beckn |
-| Chat history | Redis (per `session_id`) | Orchestrator / Voice | same |
-| Raw telemetry | Postgres `winston_logs` | Orchestrator (async) | Telemetry-Processor |
-| Typed analytics | Postgres typed tables | Telemetry-Processor | Telemetry-Backend → UI |
+**In Beckn terms:** the assistant is the buyer-side app (BAP). The provider node is the seller-side platform (BPP). The departments are the providers. Farmers are the end users, one step removed — they never touch the network themselves.
 
 ---
 
-## 10. Gaps vs. the current Beckn protocol — the re-architecture punch list
+## 6. A worked example
 
-1. **No async callbacks.** No `/on_search`, `/on_select`, `/on_init`, `/on_confirm`. Real Beckn needs the BPP to ACK immediately and POST results to the BAP's `bap_uri`. This changes the Orchestrator too — it must expose callback routes and correlate by `transaction_id`/`message_id`, which today it never does.
-2. **No signing.** No Ed25519, no `Authorization` / `X-Gateway-Authorization` header handling in application code. Only `types/schema.ts` (a copied OpenAPI file) mentions `Subscriber` — spec artifact, not working code. ⚠️ Presumed handled by the external beckn-onix container; **unconfirmed** — verify before assuming it exists at all.
-3. **No Registry or Gateway client.** Subscriber lookup and network fan-out are absent. The system today talks to exactly one hardcoded BPP URL (`BAP_ENDPOINT`).
-4. **Single hardcoded provider per category** (e.g. all knowledge-advisory results come back under one provider, "Agri Acad"). A real network needs genuine multi-provider fan-out and per-provider catalogs.
-5. **No `Item`/`Provider`/`Catalog` persistence.** Beckn shapes are generated on the fly from one flat `Content` table. A protocol-conformant catalog needs a real domain model, not `generator.ts`.
-6. **No per-item moderation** — only account-level approval. A public network's trust model likely requires item-level review; that's net-new work.
-7. **Dead routing path**: `scheme-agri-qdrant` silently degrades to the generic handler (§6). Decide: wire it, or drop it.
-8. **Two catalogs, one Orchestrator.** Decide explicitly whether the RAG catalog (Qdrant/Marqo docs) enters the Beckn catalog too, or stays a non-Beckn side channel. Today it's the latter by accident, not by design.
-9. **Legacy `dsep/*` routes** still live alongside `mobility/*` — the domain naming is inherited from unrelated Beckn domains (mobility, DSEP/education) and doesn't describe agriculture. Fix the domain taxonomy in the redesign.
-10. **Tenant asymmetry.** Amul has no Beckn node at all; MahaVistaar's lives in an untraced shared repo. A unified Beckn layer needs a decision on whether all three tenants become network participants or only BharatVistaar does.
+**A farmer asks: "What's the tomato price in Pune today?"**
+
+1. The question arrives — possibly spoken in Marathi, transcribed to text.
+2. The assistant identifies this as a price question and picks the mandi tool.
+3. It builds a Beckn request tagged as a price enquiry and sends it to the provider node.
+4. The node sees the price category and routes it to the mandi handler.
+5. That handler calls the government mandi system live, and merges the result with reference data it holds about markets and commodities.
+6. It returns the prices formatted as a Beckn catalog — **immediately, in the same reply**.
+7. The assistant turns the numbers into a sentence in Marathi and streams it back.
+8. Separately and in the background, a record of the interaction goes to the analytics system.
+
+The whole thing is one round trip. Step 6 is where today's system differs most from real Beckn — see below.
 
 ---
 
-## 11. Known blind spots in this document
+## 7. Where this differs from the current Beckn protocol
 
-- ❌ **MahaVistaar's Beckn node** — separate shared org repo, never cloned or read. Do not assume it mirrors BharatVistaar.
-- ⚠️ **beckn-onix itself** — never read. Everything about signing/registry being "handled there" is inference from the Docker image name.
-- ⚠️ **oan-index** — external hybrid-search service, treated as a black box; it holds the bulk of knowledge-advisory content.
-- ⚠️ **Voice services** — routes confirmed (`/api/voice`, OpenAI-compatible `/v1`), but the internal tool/agent path was not traced end-to-end.
+The reason for this document. Restated plainly:
+
+1. **Answers come back immediately.** Real Beckn expects the provider to say "got it" and send results separately a moment later, so many providers can answer the same question at their own pace. Today it's a single question-and-answer, like any ordinary web request. This is the biggest change, and it affects the assistant too — it would need to start *receiving* results rather than just waiting for them.
+
+2. **Requests aren't signed.** Beckn expects each participant to cryptographically sign its messages so the other side can verify who sent them. None of that happens in the application. It may be handled by the network component the system runs behind, but that has not been confirmed — worth checking before assuming it exists.
+
+3. **There's no directory of participants.** Real Beckn has a registry you consult to find out who's on the network. Here, the assistant talks to exactly one provider address, fixed in configuration. It cannot discover anyone else.
+
+4. **Everything appears under one provider name.** All knowledge results come back attributed to a single provider, regardless of who actually published them. A real network needs each department to appear as itself.
+
+5. **The catalog isn't really a catalog.** There's no stored notion of providers, catalogs, or items — just flat content rows reshaped into Beckn's format at the moment of answering. A proper implementation needs the real structure.
+
+6. **Nobody checks individual content.** Approval is at the organisation level only. If the new network requires per-item trust, that's new work, not a migration.
+
+7. **One search path is silently broken.** The assistant's scheme-document search sends a category label that the provider node doesn't recognise, so it quietly falls through to generic search instead. Verified on both sides. Fix it or remove it — don't carry it forward.
+
+8. **Decide what belongs on the network.** Today the document/video search deliberately bypasses Beckn while structured content goes through it. That split happened by accident rather than design. Choose it consciously this time.
+
+9. **Only one product is actually on the network.** Amul isn't connected at all, and MahaVistaar goes through a shared node that hasn't been examined. Decide whether all three become network participants.
+
+---
+
+## 8. What this document doesn't cover
+
+- **MahaVistaar's network node** — run from a shared repository that was not examined. Don't assume it behaves like BharatVistaar's.
+- **The underlying network component** — the off-the-shelf Beckn software the provider node runs behind was never inspected. Claims that signing and registry lookup "happen there" are assumptions.
+- **The general knowledge search service** — an external hybrid-search service holding the bulk of advisory content, treated here as a black box.
+
+---
+
+*Traced August 2026 against the running codebase. Where something was inferred rather than confirmed, it says so.*
