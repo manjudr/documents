@@ -153,27 +153,31 @@ That is the whole notion of a provider. No contact detail, no endpoint, no signi
 
 ```mermaid
 graph LR
-  ADM{{"Admin approves<br/>the ORG — once"}} -.-> D
+  REG["POST /auth/registerUser<br/>self-signup"] --> ADM{{"Admin approves<br/>the ORG — once"}}
+  ADM -.-> D
   D["Dept / ICAR<br/>EXTERNAL"] -->|"JWT + role=provider<br/>POST /provider/content<br/>/createBulkContent CSV<br/>/createBulkContent1 JSON<br/>/icarcontent · /scholarship"| API["Provider backend —<br/>THE SAME APP<br/>that answers search"]
+  D -.->|"the actual PDF or video<br/>NEVER MOVES"| HOST[("Publisher's own server —<br/>link never checked")]
   API --> G["GraphQL"]
-  G --> DB[("contents · fln_content<br/>scholarship_content<br/>LIVE ON INSERT")]
+  G --> DB[("contents · fln_content<br/>scholarship_content<br/>LIVE ON INSERT — a LINK only")]
   API -->|"thumbnails only"| S3[("Object store")]
   DB -.->|"converted ONLY<br/>at search time"| B["Beckn catalog<br/>in the response"]
 
-  T["Content team<br/>INTERNAL"] -->|"NO API —<br/>real file upload"| P["Pipeline"]
+  T["Content team<br/>INTERNAL"] -->|"NO API —<br/>real file upload"| P["docs-pipeline —<br/>SEPARATE SERVICE"]
   P --> R{"Reviewer"} --> SU{"Superadmin"} --> V[("Vector DB")]
+  V -.->|"read DIRECTLY by the assistant —<br/>the node never touches it"| AI["AI assistant"]
 ```
 
 Supporting routes not shown: `/provider/collection` and `/contentCollection` group items; `/provider/uploadImage` handles thumbnails. Each has edit and delete variants. Org approval is `PATCH /admin/approval/:id`.
 
-**Six things to read off this:**
+**Seven things to read off this:**
 
 1. **Publish and discover are the same server.** The provider backend that accepts content is the identical NestJS app that answers Beckn searches — one process, one container, one database. There is no separate publishing service.
-2. **Publish is authenticated; discover is not.** Every route here requires a JWT and the `provider` role. Every search and transaction route has **zero guards** — see §4.
-3. **Only one path has an API.** Everything external arrives over HTTP; the internal knowledge path has no endpoint at all — a human starts it. There is no way to publish a reviewed document programmatically.
-4. **The two paths have opposite trust models.** The content strangers publish is checked less than the content staff publish — external rows go live on insert, internal ones need two human approvals.
-5. **Beckn appears only at search time**, in code. Never a publish format, never a storage format.
-6. **Only the internal path uploads real files.** Externally, only thumbnails are genuinely stored; everything else is a link to somebody else's server, and nothing ever checks those links.
+2. **The two halves don't share a store.** The node reaches the content tables but **never touches the vector database** — no reference to it exists anywhere in the node's code. The assistant queries that store directly. So the diagram's two chains stay separate all the way to the farmer, which is why document search bypasses Beckn (§4).
+3. **Publish is authenticated; discover is not.** Every route here requires a JWT and the `provider` role. Every search and transaction route has **zero guards** — see §4.
+4. **Anyone can start the process.** `POST /auth/registerUser` is open self-signup; the gate is a single admin approval of the organisation. After that the account publishes freely — there is no item-level review.
+5. **Only one path has an API.** Everything external arrives over HTTP; the internal knowledge path has no endpoint at all — a human starts a pipeline that lives in **a separate repository** (`OpenAgriNet/docs-pipeline`). There is no way to publish a reviewed document programmatically.
+6. **The two paths have opposite trust models.** The content strangers publish is checked less than the content staff publish — external rows go live on insert, internal ones need two human approvals.
+7. **Externally, nothing is actually delivered.** Only thumbnails are stored; the PDF or video never moves off the publisher's own server, and no check runs at publish time or after. Delete the file and the node keeps advertising it. **Beckn appears only at search time**, in code — never a publish format, never a storage format.
 
 ### Live data — nothing to publish
 
