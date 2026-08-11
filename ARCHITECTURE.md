@@ -215,29 +215,60 @@ This search **does not go through Beckn at all.** The assistant queries the vect
 **3. Live proxy — for prices and weather**
 The assistant does **not** call the government system itself. It sends an ordinary Beckn search, exactly as it would for a scheme. The provider node recognises the category, and *it* makes the outbound call — first resolving which market or weather station applies, then fetching the current values. The assistant cannot tell the difference between this and a stored-catalog answer; both come back in the same shape.
 
-### How the provider node decides
+### How the search knows which database to hit
 
-Everything hinges on the category label in the request:
+Routing happens at **two levels**, in two different systems. Neither is a network lookup.
 
-| Category in the request | What the node does |
+```mermaid
+graph TD
+  Q["Farmer: 'what is the tomato rate today?'"] --> L1
+
+  subgraph L1 ["LEVEL 1 — in the assistant · WHICH NODE?"]
+    direction TB
+    M["Language model reads the question<br/>and picks one tool"] --> T["The tool has one fixed address,<br/>set at deploy time"]
+  end
+
+  L1 -->|"Beckn search, stamped with<br/>a fixed category label"| L2
+
+  subgraph L2 ["LEVEL 2 — in the provider node · WHICH DATABASE?"]
+    direction TB
+    S["Match the label against a fixed list"] --> H["Hand off to the matching<br/>internal service"]
+  end
+
+  L2 --> D[("Agmarknet price service")]
+```
+
+**Level 1 — which node? Decided by the language model.**
+The assistant holds a set of tools, each described in plain English. The model reads the farmer's question, judges which tool fits, and calls it. Every tool carries one destination address, fixed in configuration at deploy time. So this level picks *who to ask* — and it is a model judgement, not a lookup. If the model picks wrong, the question goes to the wrong node.
+
+**Level 2 — which database? Decided by a label in the request.**
+Each tool writes one fixed category label into the search request it sends. The provider node reads that label, matches it against a fixed internal list, and hands the request to the matching service. So this level picks *which store answers* — and the decision was already made by the caller before the request left.
+
+The important consequence: **the node performs no judgement of its own.** It does not read the question, inspect the farmer's intent, or choose the best source. It obeys the label. So the answer to "how does it know which database?" is blunt — **the caller names it.** The category label *is* the database selector.
+
+| Label the caller sends | Where the answer comes from |
 |---|---|
-| price discovery, item = mandi | resolves the nearest market, then calls **Agmarknet** for today's prices |
-| weather forecast | resolves the weather station, then calls the **IMD** station service |
-| weather forecast (Mausamgram) | calls **Mausamgram** by coordinates instead |
-| ICAR schemes | queries its own content database — no external call |
-| crop insurance | calls the external insurance service |
-| anything it doesn't recognise | falls through to a general-purpose search service |
+| `price-discovery` with item `mandi` | resolves the nearest market, then calls **Agmarknet** for today's prices |
+| `Weather-Forecast` | resolves the weather station, then calls the **IMD** station service |
+| `Weather-Forecast-Mausamgram` | calls **Mausamgram** by coordinates instead |
+| `icar-schemes` | its own content database — no external call |
+| `schemes-agri` | the PM-Kisan service |
+| `pmfby` | the crop insurance service |
+| `knowledge-advisory` | a general-purpose external search index |
+| anything else | falls through to that same general-purpose index |
 
-That last row matters — an unrecognised category doesn't fail, it silently produces a generic answer. See §7.
+Milk and dairy aren't on this list at all — Amul is a **separate node** reached by its own fixed address.
 
-### How it decides which provider to call
+Two things follow from this design, both of which matter for the redesign:
 
-There is **no registry**. Nothing in the system looks up who is on the network.
+- **An unrecognised label doesn't fail — it silently answers from the generic index.** This is not hypothetical: scheme search sends a label the node has no entry for, so scheme questions are answered by generic search today. See §7.
+- **Adding a data source means editing that list and shipping a release.** There is no way for a new source to announce itself.
 
-Selection happens in two steps, neither of which is discovery:
+### Why neither level counts as discovery
 
-1. **The assistant picks a tool.** The language model reads the question, decides it's a mandi question, and calls the mandi tool. That is the whole routing decision.
-2. **The tool has one address, fixed in configuration.** Each destination is a separate deploy-time setting — one for the main provider node, one for the Amul network, one for the booking node, one for the Vistaar network, one for the Maharashtra benefit-transfer node.
+There is **no registry**. Nothing in the system ever looks up who is on the network.
+
+Level 1 doesn't discover anything — it selects from a hand-maintained list of addresses. Each destination is a separate deploy-time setting: one for the main provider node, one for the Amul network, one for the booking node, one for the Vistaar network, one for the Maharashtra benefit-transfer node. Level 2 doesn't discover anything either — it matches a string against a list compiled into the node.
 
 The request does carry a provider identifier and URL in its header, but those are *asserted* by the sender, not the result of a lookup, and nothing verifies them.
 
