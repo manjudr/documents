@@ -40,13 +40,12 @@ The two catalogs have **different publishers, different approval rules, differen
 
 **Why live data isn't a catalog:** nothing is published into it and no answer is kept — today's tomato price exists only for the length of one request. What *is* stored is the lookup table behind it: which markets exist, which weather stations exist, which commodity names are valid. So it's a live proxy with a reference table in front.
 
-```
-   Farmer's question
-          |
-   Provider node  --1-->  reference database: which mandi? which station?
-                  --2-->  Agmarknet / IMD / Mausamgram, live, per request
-          |
-   Answer  —  nothing is stored
+```mermaid
+graph LR
+  Q["Farmer's question"] --> N["Provider node"]
+  N -->|"1 — which mandi?<br/>which station?"| R[("Reference data")]
+  N -->|"2 — live, per request"| E["Agmarknet<br/>IMD / Mausamgram"]
+  E --> A["Answer<br/>nothing is stored"]
 ```
 
 This matters for the redesign: catalogs can be published and cached, live data cannot.
@@ -117,14 +116,14 @@ That is the whole notion of a provider. No contact detail, no endpoint, no signi
 
 ### The whole publish picture
 
-```
- EXTERNAL PATH  —  no item review
-   Dept / ICAR  --(4 content routes + scholarship)-->  GraphQL  -->  flat rows, live on insert
-                                                                          |
-                                             converted to Beckn ONLY at search time, in code
+```mermaid
+graph LR
+  D["Dept / ICAR<br/>EXTERNAL"] -->|"4 content routes<br/>+ scholarship"| G["GraphQL"]
+  G --> DB[("Flat rows<br/>live on insert")]
+  DB -.->|"converted ONLY<br/>at search time"| B["Beckn catalog<br/>in the response"]
 
- INTERNAL PATH  —  two approvals
-   Content team  --(real file upload)-->  pipeline  -->  reviewer  -->  superadmin  -->  vector DB
+  T["Content team<br/>INTERNAL"] -->|"real file upload"| P["Pipeline"]
+  P --> R{"Reviewer"} --> S{"Superadmin"} --> V[("Vector DB")]
 ```
 
 **Three things to read off this:**
@@ -181,20 +180,11 @@ Two things exist only on the phone side. The conversation is held per call, and 
 
 Routing happens at **two levels**, in two different systems. Neither is a network lookup.
 
-```
-   "what is the tomato rate today?"
-                 |
-   LEVEL 1  —  in the assistant  —  WHICH TOOL?
-   model reads the question, picks the mandi tool
-                 |
-                 |   Beckn search, labelled  price-discovery
-                 |   sent to the ONE configured address
-                 v
-   LEVEL 2  —  in the provider node  —  WHICH DATABASE?
-   match the label against a fixed list
-                 |
-                 v
-        Agmarknet price service
+```mermaid
+graph TD
+  Q["'tomato rate today?'"] --> L1["LEVEL 1 — in the assistant<br/>WHICH TOOL?<br/>model picks the mandi tool"]
+  L1 -->|"labelled price-discovery,<br/>sent to the ONE address"| L2["LEVEL 2 — in the provider node<br/>WHICH DATABASE?<br/>match label to a fixed list"]
+  L2 --> D[("Agmarknet<br/>price service")]
 ```
 
 **Level 1 — which tool? Decided by the language model.**
@@ -244,16 +234,18 @@ Because there is no gateway fan-out, **a search can only ever reach one provider
 
 **Across the three products** the picture is a hand-wired mesh, not a network:
 
-```
-   BharatVistaar assistant ──> its own provider node
-                           ──> "MahaVistaar" tool ──> the same address (see §11)
+```mermaid
+graph LR
+  BV["BharatVistaar"] --> BVN[("its own node")]
+  BV -.->|"'MahaVistaar' tool —<br/>same address? see §11"| BVN
 
-   MahaVistaar assistant   ──> a shared node (never examined)
-                           ──> BharatVistaar, MahaDBT, AgriStack, agri-services
+  MV["MahaVistaar"] --> SH[("a shared node<br/>never examined")]
+  MV --> BV
+  MV --> DBT[("MahaDBT, AgriStack")]
 
-   Amul assistant          ──> Vistaar network   (weather, mandi, schemes)
-                           ──> Amul network      (documents, union schemes)
-                           ──> Amul booking node (call bookings)
+  AM["Amul<br/>runs no node"] --> VN[("Vistaar network<br/>weather, mandi, schemes")]
+  AM --> AN[("Amul network<br/>documents")]
+  AM --> AB[("Booking node")]
 ```
 
 Every arrow is a deployment setting. The traffic is genuinely cross-organisational — Amul farmers really do get Vistaar's mandi prices — but no participant can name, find or verify any other. Amul is the clearest case: it operates no node at all, yet is a client of three.
@@ -261,6 +253,23 @@ Every arrow is a deployment setting. The traffic is genuinely cross-organisation
 ### What comes back
 
 The assistant takes whatever the source returned, writes the answer in the farmer's language, and streams it back sentence by sentence rather than making them wait for the whole thing.
+
+**The whole of discover, in one picture:**
+
+```mermaid
+graph LR
+  F["Farmer asks<br/>text or voice, any language"] --> A["AI assistant"]
+  A -->|"Beckn, labelled"| N["Provider node"]
+  N --> DB[("Content table")]
+  N -->|"live"| Gov[("Agmarknet, IMD,<br/>Mausamgram")]
+  A -->|"no Beckn"| V[("Vector DB<br/>documents, videos")]
+  DB --> A
+  Gov --> A
+  V --> A
+  A --> R["Answer streamed back<br/>in the farmer's language"]
+```
+
+Note the two shapes of arrow into the assistant: **structured content and live data go through Beckn; document search does not.**
 
 ---
 
