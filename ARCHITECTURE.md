@@ -142,22 +142,27 @@ That is the whole notion of a provider. No contact detail, no endpoint, no signi
 
 ```mermaid
 graph LR
-  D["Dept / ICAR<br/>EXTERNAL"] -->|"POST /provider/content<br/>/createBulkContent (CSV)<br/>/createBulkContent1 (JSON)<br/>/icarcontent<br/>/scholarship"| G["GraphQL"]
-  G --> DB[("Flat rows —<br/>live on insert")]
+  ADM{{"Admin approves<br/>the ORG — once"}} -.-> D
+  D["Dept / ICAR<br/>EXTERNAL"] -->|"JWT + role=provider<br/>POST /provider/content<br/>/createBulkContent CSV<br/>/createBulkContent1 JSON<br/>/icarcontent · /scholarship"| API["Provider backend —<br/>THE SAME APP<br/>that answers search"]
+  API --> G["GraphQL"]
+  G --> DB[("contents · fln_content<br/>scholarship_content<br/>LIVE ON INSERT")]
+  API -->|"thumbnails only"| S3[("Object store")]
   DB -.->|"converted ONLY<br/>at search time"| B["Beckn catalog<br/>in the response"]
 
   T["Content team<br/>INTERNAL"] -->|"NO API —<br/>real file upload"| P["Pipeline"]
-  P --> R{"Reviewer"} --> S{"Superadmin"} --> V[("Vector DB")]
+  P --> R{"Reviewer"} --> SU{"Superadmin"} --> V[("Vector DB")]
 ```
 
-Supporting routes not shown: `/provider/collection` and `/contentCollection` group items; `/provider/uploadImage` handles thumbnails. Each has edit and delete variants.
+Supporting routes not shown: `/provider/collection` and `/contentCollection` group items; `/provider/uploadImage` handles thumbnails. Each has edit and delete variants. Org approval is `PATCH /admin/approval/:id`.
 
-**Four things to read off this:**
+**Six things to read off this:**
 
-1. **Only one path has an API.** Everything external arrives over HTTP; the internal knowledge path has no endpoint at all — a human starts it. There is no way to publish a reviewed document programmatically.
-2. **The two paths have opposite trust models.** The content strangers publish is checked less than the content staff publish — external rows go live on insert, internal ones need two human approvals.
-3. **Beckn appears only at search time**, in code. Never a publish format, never a storage format.
-4. **Only the internal path uploads real files.** Everything external is a link to somebody else's server, and nothing ever checks those links.
+1. **Publish and discover are the same server.** The provider backend that accepts content is the identical NestJS app that answers Beckn searches — one process, one container, one database. There is no separate publishing service.
+2. **Publish is authenticated; discover is not.** Every route here requires a JWT and the `provider` role. Every search and transaction route has **zero guards** — see §4.
+3. **Only one path has an API.** Everything external arrives over HTTP; the internal knowledge path has no endpoint at all — a human starts it. There is no way to publish a reviewed document programmatically.
+4. **The two paths have opposite trust models.** The content strangers publish is checked less than the content staff publish — external rows go live on insert, internal ones need two human approvals.
+5. **Beckn appears only at search time**, in code. Never a publish format, never a storage format.
+6. **Only the internal path uploads real files.** Externally, only thumbnails are genuinely stored; everything else is a link to somebody else's server, and nothing ever checks those links.
 
 ### Live data — nothing to publish
 
@@ -222,9 +227,12 @@ Routing happens at **two levels**, in two different systems. Neither is a networ
 ```mermaid
 graph TD
   Q["'tomato rate today?'"] --> L1["LEVEL 1 — in the assistant<br/>WHICH TOOL?<br/>model picks the mandi tool"]
-  L1 -->|"labelled price-discovery,<br/>sent to the ONE address"| L2["LEVEL 2 — in the provider node<br/>WHICH DATABASE?<br/>match label to a fixed list"]
-  L2 --> D[("Agmarknet<br/>price service")]
+  L1 -->|"labelled price-discovery,<br/>ONE address, NO AUTH"| L2["LEVEL 2 — in the provider node<br/>WHICH DATABASE?<br/>match label to a fixed list"]
+  L2 -->|"matched"| D[("Agmarknet<br/>price service")]
+  L2 -.->|"NO match —<br/>silent fallthrough"| GEN[("Generic search index")]
 ```
+
+**Nothing authenticates a search.** Every route on the node that answers searches and runs transactions has no guard on it — no token, no key, no signature. Anyone who knows the URL can call it, including the OTP and grievance endpoints. Publishing, by contrast, requires a login (§3).
 
 **Level 1 — which tool? Decided by the language model.**
 The assistant holds a set of tools, each described in plain English. The model reads the farmer's question, judges which tool fits, and calls it. This is a model judgement, not a lookup.
@@ -297,18 +305,20 @@ The assistant takes whatever the source returned, writes the answer in the farme
 
 ```mermaid
 graph LR
-  F["Farmer asks<br/>text or voice, any language"] --> A["AI assistant"]
-  A -->|"Beckn, labelled"| N["Provider node"]
-  N --> DB[("Content table")]
-  N -->|"live"| Gov[("Agmarknet, IMD,<br/>Mausamgram")]
-  A -->|"no Beckn"| V[("Vector DB<br/>documents, videos")]
+  F["Farmer asks<br/>text or voice, any language"] --> A["AI assistant<br/>LLM picks one tool"]
+  A -->|"Beckn, labelled — no auth"| N["Provider node<br/>matches label to a fixed list"]
+  N --> DB[("Content tables<br/>via GraphQL")]
+  N -->|"live, per request"| Gov[("Agmarknet, IMD,<br/>Mausamgram")]
+  N -.->|"label unknown"| GEN[("Generic index")]
+  A -->|"no Beckn"| V[("Vector DB<br/>documents, videos, pests")]
   DB --> A
   Gov --> A
+  GEN --> A
   V --> A
   A --> R["Answer streamed back<br/>in the farmer's language"]
 ```
 
-Note the two shapes of arrow into the assistant: **structured content and live data go through Beckn; document search does not.**
+Three things to read off this: **structured content and live data go through Beckn; document search does not**; the node reaches its own database only through the GraphQL layer, never directly; and an unrecognised label doesn't error — it silently returns generic results, which is the dotted arrow.
 
 ---
 
