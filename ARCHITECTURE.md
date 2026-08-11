@@ -66,22 +66,34 @@ The two catalogs have **different publishers, different approval rules, differen
 
 ```mermaid
 graph LR
-  Q["Farmer's question<br/>+ location"] --> N["Provider node"]
-  N -->|"1 — resolve location<br/>to official codes"| R[("Market &amp; station master data<br/>GEOSPATIAL — stores:<br/>• markets + district codes + boundaries<br/>• weather stations + coordinates<br/>• commodity codes")]
-  R -->|"districtcode, marketcode,<br/>station id"| N
+  Q["Farmer: 'tomato rate<br/>in Nashik today?'"] --> AI["AI assistant —<br/>LLM picks a tool"]
+  AI -->|"search_commodity —<br/>bundled file, no network"| CC[("commodity codes<br/>ON THE ASSISTANT")]
+  AI -->|"get_mandi_prices —<br/>Beckn, labelled<br/>price-discovery"| N["Provider node"]
+  N -->|"1 — lat/lon →<br/>point-in-polygon"| R[("Market &amp; station master data<br/>GEOSPATIAL — markets, district<br/>codes, boundaries; weather<br/>stations and coordinates")]
+  R -->|"districtcode,<br/>marketcode"| N
   N -->|"2 — live, per request"| E["Agmarknet<br/>IMD / Mausamgram"]
   E --> A["Answer —<br/>nothing is stored"]
 ```
 
-**What it stores, and what it doesn't:**
+**Two different lookups, in two different systems.** This is the part that gets missed:
+
+| Resolving | Where | How |
+|---|---|---|
+| "tomato" → `commoditycode` | **the assistant** | fuzzy match against a bundled JSON file |
+| location → `marketcode`, `districtcode`, station id | **the node** | geospatial query — `get_markets_at_point`, `find_nearby_stations` |
+
+The node **never looks up a commodity.** It receives `commoditycode` as a request parameter and passes it straight through to Agmarknet. So a wrong commodity match on the assistant side reaches the government API unchallenged.
+
+**Which of the two live services is called is decided the same way as everything else — by tool choice.** `get_mandi_prices` and `weather_forecast` post to the same address; only the label differs, and the node's switch does the rest (§4). Weather takes the identical shape: resolve the station from coordinates, then call IMD or Mausamgram live.
+
+**What is stored, and what isn't:**
 
 | Stored — slow-changing | Never stored — fetched per request |
 |---|---|
 | Markets, their district codes and geographic boundaries | Today's mandi prices |
 | Weather stations and their coordinates | Any forecast |
-| Valid commodity names and codes | — |
 
-**Why this step exists at all.** The government APIs don't accept "Nashik" or a latitude and longitude — they want a `districtcode` and `marketcode`, or a specific station id. The master data is what performs that translation, by point-in-polygon for markets and by distance ordering for stations. It lives in its own database, separate from the content tables, and is loaded and maintained outside the publish APIs entirely — no publisher can touch it.
+**Why the step exists at all.** The government APIs don't accept "Nashik" or a latitude and longitude — they want a `districtcode` and `marketcode`, or a specific station id. The master data performs that translation, by point-in-polygon for markets and distance ordering for stations. It lives in its own database, separate from the content tables, and is loaded and maintained outside the publish APIs entirely — **no publisher can touch it, and no API exposes it.**
 
 This matters for the redesign: catalogs can be published and cached, live data cannot — but **the master data in front of it is neither**, and today has no owner in the publishing model.
 
