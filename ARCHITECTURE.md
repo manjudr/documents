@@ -22,11 +22,23 @@ All three are the same thing wearing different clothes: an **AI assistant that a
 
 ---
 
-## 2. Start here: two catalogs, plus one thing that isn't a catalog at all
+## 2. Start here: three sources of answers
 
-This is the single thing that makes everything else confusing if you miss it. When someone says "the catalog," they could mean either of two unrelated systems — and a lot of what the platform answers doesn't come from a catalog in the first place.
+Every answer a farmer gets comes from one of three places. Two of them are catalogs — someone publishes into them and the content sits there until searched. The third has no catalog behind it at all.
 
-**The two real catalogs.** Something is published, it is stored, it is searched later.
+| | **Content catalog** | **Knowledge catalog** | **Live data** |
+|---|---|---|---|
+| Who publishes | agriculture departments, ICAR, scheme owners | the internal content team | **nobody** |
+| What | scheme details, advisory articles, videos, scholarships | scheme guideline PDFs, circulars, manuals | mandi prices, weather forecasts |
+| Approval | organisation approved once, content never checked | two humans, in sequence | not applicable |
+| Stored | yes — structured rows | yes — meaning-indexed passages | **no** — only reference data |
+| Searched by | matching on category and fields | closeness of meaning | fetched fresh per request |
+
+**Why live data isn't called a catalog:** nothing is ever published into it and no answer is kept. Today's tomato price exists only for the duration of one request. What *is* stored is the lookup table behind it — which markets exist, which weather stations exist, which commodity names are valid — and that does need maintaining. So it's a live proxy with a reference table in front, not a catalog.
+
+It matters for the redesign because the three behave differently under Beckn: catalogs can be published and cached, live data cannot.
+
+**The two catalogs.** Something is published, it is stored, it is searched later.
 
 ```mermaid
 graph TB
@@ -49,7 +61,7 @@ graph TB
 
 They have **different publishers, different approval rules, different storage, and completely different search mechanics**. A request to "add a new scheme to the catalog" means two different jobs depending on which one is meant.
 
-**Live data is not a catalog.** Nothing is published into it and no answer is stored. When a farmer asks, the provider node calls the government system and passes back whatever it says. Nothing survives the request.
+**And the third source, drawn out.** When a farmer asks, the provider node calls the government system and passes back whatever it says:
 
 ```mermaid
 graph LR
@@ -60,8 +72,6 @@ graph LR
   Ext -->|"today's values"| N
   N --> A["Answer<br/>nothing is stored"]
 ```
-
-The distinction that matters: the **reference data is stored** — the list of markets, weather stations and commodities is held locally and needs maintaining. The **values are not**. So this is a live proxy with a lookup table in front of it, not a catalog with fresh entries.
 
 ---
 
@@ -154,6 +164,26 @@ Everything hinges on the category label in the request:
 
 That last row matters — an unrecognised category doesn't fail, it silently produces a generic answer. See §7.
 
+### How it decides which provider to call
+
+There is **no registry**. Nothing in the system looks up who is on the network.
+
+Selection happens in two steps, neither of which is discovery:
+
+1. **The assistant picks a tool.** The language model reads the question, decides it's a mandi question, and calls the mandi tool. That is the whole routing decision.
+2. **The tool has one address, fixed in configuration.** Each destination is a separate deploy-time setting — one for the main provider node, one for the Amul network, one for the booking node, one for the Vistaar network, one for the Maharashtra benefit-transfer node.
+
+The request does carry a provider identifier and URL in its header, but those are *asserted* by the sender, not the result of a lookup, and nothing verifies them.
+
+| Beckn expects | Today |
+|---|---|
+| a registry to find participants | addresses hardcoded in configuration |
+| a gateway that broadcasts one search to many providers | one fixed address per tool |
+| signatures checked against registered keys | no verification |
+| participants joining and leaving | redeploy with a new setting |
+
+Two consequences worth carrying into the redesign. **Adding a provider is a config change and a release**, not an onboarding step. And because there is no gateway fan-out, **a search can only ever reach one provider** — the network cannot grow beyond what someone wired in by hand.
+
 ### What comes back
 
 The assistant takes whatever the source returned, writes an answer in the farmer's language, and streams it back sentence by sentence so the farmer sees it appear as it's written rather than waiting for the whole thing.
@@ -244,7 +274,7 @@ For engineers. The rest of the document deliberately avoids these.
 | `POST /auth/registerUser`, `POST /auth/login` | organisation registers, then gets a token |
 | `PATCH /admin/approval/:id` | admin approves the **organisation** — the only approval that exists |
 | `POST /provider/content` | publish one item |
-| `POST /provider/createBulkContent` | spreadsheet upload, fixed 28-column layout |
+| `POST /provider/createBulkContent` | spreadsheet upload, 30-column layout — but see the warning below |
 | `POST /provider/icarcontent` | scheme-shaped items |
 | `POST /provider/collection`, `/contentCollection` | group items |
 | `POST /provider/scholarship`, `/uploadImage` | scholarships, media |
@@ -284,6 +314,113 @@ Market and station reference data comes from a separate database the node connec
 **Assistant-facing** — `GET /api/chat/` streams the answer as server-sent events. Supporting routes: `POST /api/token` (plus `/api-key` and `/play-integrity`), `POST /api/transcribe/`, `POST /api/tts/`, `POST /api/telemetry/{events,feedback,error}`.
 
 **Configuration trap:** the variable named `BAP_ENDPOINT` holds the **provider node's** URL. The assistant is the BAP; that setting is where it sends to, not what it is.
+
+---
+
+## 9. Examples
+
+### Publishing one item
+
+`POST /provider/content`, with the organisation's token. The owning organisation is taken from the token, not the body.
+
+```json
+{
+  "content_id": "ICAR-WHEAT-2026-014",
+  "title": "Wheat sowing advisory for late rabi",
+  "description": "Recommended varieties and sowing window for delayed rabi planting.",
+  "contentType": "Article",
+  "category": "Crop Advisory",
+  "themes": "Rabi, Wheat, Sowing",
+  "domain": "Agriculture",
+  "language": "hi",
+  "url": "https://example.gov.in/advisories/wheat-late-rabi.pdf",
+  "urlType": "external",
+  "mimeType": "application/pdf",
+  "publisher": "ICAR",
+  "sourceOrganisation": "ICAR-IIWBR",
+  "author": "Dr. A. Sharma",
+  "image": "https://example.gov.in/img/wheat.png",
+  "collection": false
+}
+```
+
+It goes live on insertion. No review step follows.
+
+### Publishing in bulk
+
+`POST /provider/createBulkContent` with a CSV. The header row must contain these 30 columns:
+
+```
+content id, Name, Description, Icon, Crop, Branch, Publisher, Collection,
+URL_Type, URL, Mime_Type, Language, Content Type, Category, Themes,
+Min age, Max age, Author, Domain, Curricular Goals, Competencies,
+Learning Outomes, District, State, Expiry Date, File Type,
+Month Or Season, Publish Date, Region, Target Users
+```
+
+> ⚠️ **Three things to know before relying on this.**
+> 1. **The header check does not run.** The code computes whether the headers are valid and then ignores the result — the import proceeds unconditionally. A malformed file will be accepted and produce rows full of nulls.
+> 2. **Only 18 of the 30 columns are stored.** Crop, Category, Themes, Min age, Max age, Author, Domain, Curricular Goals, Competencies, Learning Outcomes, District, URL_Type and Mime_Type are read from the file and then dropped. Publishers filling them in are wasting effort.
+> 3. **`Learning Outomes` is misspelled** in the expected header, so a correctly spelled file mismatches — which currently doesn't matter only because of point 1.
+>
+> The vocabulary is also inherited from an education platform — "Curricular Goals", "Competencies", "Learning Outcomes", "Min age"/"Max age" have no agricultural meaning. Worth dropping in the redesign.
+
+### A search request
+
+`POST /mobility/search`. This is the mandi example from §6:
+
+```json
+{
+  "context": {
+    "domain": "schemes:vistaar",
+    "action": "search",
+    "version": "1.1.0",
+    "bap_id": "vistaar-assistant",
+    "bap_uri": "https://assistant.example.in",
+    "bpp_id": "vistaar-provider",
+    "bpp_uri": "https://provider.example.in",
+    "transaction_id": "2f7c1e40-...",
+    "message_id": "9b3d55a1-...",
+    "timestamp": "2026-08-11T09:14:22.517Z",
+    "ttl": "PT10M",
+    "location": { "country": { "code": "IND" }, "city": { "code": "*" } },
+    "tags": { "session_id": "sess-8821", "question_id": "q-4417" }
+  },
+  "message": {
+    "intent": {
+      "category": { "descriptor": { "code": "price-discovery", "name": "price-discovery" } },
+      "item": { "descriptor": { "code": "mandi", "name": "tomato" } }
+    }
+  }
+}
+```
+
+**`category.descriptor` is the routing key** — it alone decides which internal service handles the request. `item.descriptor` carries the actual question.
+
+### The response
+
+Comes back **in the same HTTP reply** — there is no separate callback:
+
+```json
+{
+  "context": { "action": "on_search", "transaction_id": "2f7c1e40-...", "...": "..." },
+  "message": {
+    "catalog": {
+      "providers": [{
+        "descriptor": { "name": "Agri Acad" },
+        "items": [{
+          "descriptor": { "name": "Tomato — Pune (Khadki)", "short_desc": "Agmarknet mandi prices" },
+          "tags": [{ "descriptor": { "code": "modal_price" }, "value": "2450" }]
+        }]
+      }]
+    }
+  }
+}
+```
+
+Note two things. The action says `on_search`, but this is a plain response body, not a callback to `bap_uri` — the shape is Beckn, the mechanics are not. And the provider name is a fixed label, not the organisation that actually published the data.
+
+---
 
 ---
 
