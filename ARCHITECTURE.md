@@ -66,7 +66,25 @@ The two catalogs have **different publishers, different approval rules, differen
 
 This matters for the redesign: catalogs can be published and cached, live data cannot — but **the master data in front of it is neither.** Nothing publishes it, no API exposes it, and it has no owner in the publishing model at all.
 
-**A note on scope.** These three cover every answer to a *general* question. They do not cover questions about a specific farmer — "has my PM-Kisan payment arrived?" — which are answered by a fourth path: a live, OTP-authenticated query against a government system, holding no data of its own. That path is §9.
+### And a fourth: the generic index
+
+The three above are the ones this document can trace end to end. There is a fourth, and it is reached two different ways — one deliberate, one not.
+
+- **Deliberately**, as the backend for one named category. A request labelled `knowledge-advisory` is routed to it on purpose. It is the node's document-search service.
+- **Accidentally**, as the catch-all. Any request whose label the node doesn't recognise is sent here too, rather than refused (§6, gap 8).
+
+What is known about it:
+
+| | |
+|---|---|
+| What it holds | documents — searches filter on `type:document`, hybrid vector + keyword |
+| Where it lives | a **hardcoded IP address in the node's source**, over plain HTTP — not configuration, not TLS |
+| Is it the knowledge catalog? | **No.** Different index, different name, different address. The assistant's own document store is configured separately. |
+| Who writes to it | **unknown.** Its name appears exactly once in all the code examined — the read. There is no write path anywhere in these repositories, no publish route, and no approval step. |
+
+> Two document stores, not one. The assistant searches its own; the node searches this one. **Nothing in this document explains how content gets into the node's.** That is the largest single unknown here — it answers real questions today, including mandi prices, and nobody in these repos puts anything into it.
+
+**A note on scope.** These three cover every answer to a *general* question.**A note on scope.** These three cover every answer to a *general* question. They do not cover questions about a specific farmer — "has my PM-Kisan payment arrived?" — which are answered by a fourth path: a live, OTP-authenticated query against a government system, holding no data of its own. That path is §9.
 
 ---
 
@@ -696,17 +714,19 @@ The reason for this document. Restated plainly:
 
 9. **The publish API cannot write the fields that search filters on.** Verified in code. Scheme search narrows the content table on two columns, `usecase` and `scheme_id` — and **no publish route sets either one**. Neither appears in any insert or update. The same is true of the six columns holding the actual scheme text. So anything published through the documented API arrives with those columns empty and is invisible to the search that was meant to find it. The rows that *do* answer scheme questions were loaded some other way, outside every endpoint in §7. Two separate publishing stories, and only one of them has an API.
 
-10. **Decide what belongs on the network.** Today the document/video search deliberately bypasses Beckn while structured content goes through it. That split happened by accident rather than design. Choose it consciously this time.
+10. **The node's document index is unowned, undocumented and hardcoded.** It backs the `knowledge-advisory` category *and* catches everything unrecognised. Its address is an **IP literal in the node's source, over plain HTTP** — not configuration, not TLS. It is a second document store, separate from the one the assistant searches. **No write path to it exists anywhere in these repositories**, so how content reaches it is unknown. Three questions for the redesign: who owns it, how is it published to, and should an unroutable request be answered at all rather than refused?
 
-11. **Nobody publishes in Beckn format, and no content is actually held.** Publishers send flat fields in four shapes; the node converts at query time. Files are never uploaded — only links to the publisher's server, which nothing validates, so dead links are advertised indefinitely. Two questions: should publishers produce Beckn structure directly, and should the network hold content or keep pointing elsewhere?
+11. **Decide what belongs on the network.** Today the document/video search deliberately bypasses Beckn while structured content goes through it. That split happened by accident rather than design. Choose it consciously this time.
 
-12. **Only one product operates a node, but all three use the network.** BharatVistaar runs the only node examined here; MahaVistaar uses a shared node nobody has looked at; Amul runs none yet is a client of three. The products also query each other. The cross-traffic is real — it just has no registry, no signing and no discovery underneath it. That makes the redesign more urgent, not less.
+12. **Nobody publishes in Beckn format, and no content is actually held.** Publishers send flat fields in four shapes; the node converts at query time. Files are never uploaded — only links to the publisher's server, which nothing validates, so dead links are advertised indefinitely. Two questions: should publishers produce Beckn structure directly, and should the network hold content or keep pointing elsewhere?
 
-13. **Two unrelated routing schemes, and the riskier one is the weaker.** Search routes on a category label; transactions route on a provider id in the order. Neither knows about the other, and both fall through to a default handler rather than rejecting what they don't recognise. The transactional flows carry identity and have real consequences — a grievance filed, a payment status disclosed — yet run on the same unsigned, unverified transport. An OTP proves the farmer; nothing proves the machines. See §9.
+13. **Only one product operates a node, but all three use the network.** BharatVistaar runs the only node examined here; MahaVistaar uses a shared node nobody has looked at; Amul runs none yet is a client of three. The products also query each other. The cross-traffic is real — it just has no registry, no signing and no discovery underneath it. That makes the redesign more urgent, not less.
+
+14. **Two unrelated routing schemes, and the riskier one is the weaker.** Search routes on a category label; transactions route on a provider id in the order. Neither knows about the other, and both fall through to a default handler rather than rejecting what they don't recognise. The transactional flows carry identity and have real consequences — a grievance filed, a payment status disclosed — yet run on the same unsigned, unverified transport. An OTP proves the farmer; nothing proves the machines. See §9.
 
 ### The picture across the three products
 
-A hand-wired mesh, not a network — this is gap 12 above, drawn:
+A hand-wired mesh, not a network — this is gap 13 above, drawn:
 
 ```mermaid
 graph LR
