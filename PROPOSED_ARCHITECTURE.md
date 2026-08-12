@@ -298,6 +298,56 @@ The current use-case inventory fits the component model without adding a fifth t
 
 Operational dashboards, health monitoring, and feedback analytics require each component to expose consistent operational evidence. This is a cross-component supportability contract, not a fifth top-level business component. If network-wide aggregation later requires independent ownership or scaling, the architecture may separate it without changing the four component types.
 
+## Architecture review checkpoint
+
+The architecture is ready for agreement on its foundation. Reviewers are being asked to confirm the following approach before the document proceeds into detailed models and specifications.
+
+| Area | Foundation proposed for agreement |
+|---|---|
+| Ecosystem | Consumer, Provider, and Network Operator are the three actor roles |
+| Interactions | Advise, Observe, and Act are composable domain interaction types; trigger, completion, channel, and representation remain independent |
+| Ownership | Experience Layer, Network Exchange, and Provider Capability Layer are the three logical ownership layers |
+| Components | Experience Application, Registry, Exchange, and Provider Service are the four logical component types; Registry belongs inside Network Exchange |
+| Role composition | One organisation may play more than one role, but each interaction preserves its role contract, state ownership, policy, provenance, and audit boundaries |
+| Flow separation | Runtime network interactions use the Exchange; publishing, onboarding, and governance address the component that owns their lifecycle |
+| Extensibility | Discovery, ingestion, channels, language, persona, and adapters extend an owning component rather than becoming top-level components by default |
+| Validation | Every architectural addition must map to the use-case inventory and identify its actors, components, state owner, interaction path, and operational evidence |
+
+Agreement at this checkpoint accepts these responsibility boundaries as the basis for further work. It does not yet approve field-level information models, API payloads, protocol bindings, security profiles, deployment technologies, or service-level objectives.
+
+### Pending architecture work
+
+The remaining architecture work will be completed in the following order. Later work may refine an accepted boundary only when a use case, quality requirement, or interface proves that the current boundary does not hold.
+
+| Order | Work item | Completion evidence |
+|---|---|---|
+| 1 | Requirements and design forces | Prioritized functional, trust, extensibility, operational, and architecture constraints, traced to the use cases |
+| 2 | Information model and authority | Core concepts, relationships, identifiers, lifecycle, authoritative owner, projections, privacy boundaries, and extension rules |
+| 3 | Representative end-to-end flows | Success and failure diagrams for immediate response, composite interaction, callback, notification, onboarding, knowledge publishing and retrieval, governance, and reconciliation |
+| 4 | Component deep-dives | Purpose, does, never does, assumptions, owned state, provided and required contracts, extension points, failure evidence, and supporting use cases for every component |
+| 5 | Interface and contract architecture | Interface map covering caller, provider, outcome, authority, synchronous or asynchronous behavior, failure, versioning, and contract owner |
+| 6 | Shared trust and control boundaries | Identity, consent, authorization, policy evidence, schema compatibility, status, errors, idempotency, provenance, receipts, and audit |
+| 7 | Extensibility and conformance | Verifiable procedures for adding a Provider, capability, schema, channel, language, persona, or adapter without changing unrelated components |
+| 8 | Operability and supportability | Component health, operational evidence, dashboards, diagnosis, administration, reconciliation, and network-wide traceability |
+| 9 | Deployment and allocation views | Network Operator core, first-party Provider Service, external Provider, managed Provider Service, scaling, and isolation boundaries |
+| 10 | Architecture validation | Requirement-to-component mapping and row-level use-case traceability with unresolved pressure points recorded as open items |
+
+### Derived specifications
+
+The architecture will derive a set of normative specifications. The architecture owns the responsibility and authority decisions; each specification owns its precise implementable contract.
+
+| Specification | Defines |
+|---|---|
+| OpenAgriNet information model | Concepts, relationships, identifiers, lifecycles, authority, validation, privacy, serialization, and domain-profile extensions |
+| Interaction contract | Common envelope and Advise, Observe, Act, response, callback, poll, push, status, error, and idempotency contracts |
+| Registry | Participant, role, capability, schema, endpoint, key, status, discovery, and governance records and interfaces |
+| Provider capability | Capability declaration, invocation, results, events, provenance, receipts, state ownership, and adapter rules |
+| Knowledge Provider | Publishing, approval, versioning, retrieval, projections, translation, persona application, deletion, and provenance |
+| Identity, consent, trust, and policy | Identity boundaries, consent, credentials, authorization, disclosure, and policy evidence |
+| Delivery and events | Callback, notification, subscription, scheduling, retry, delivery guarantee, and reconciliation behavior |
+| Operational evidence | Health, metrics, logs, traces, audit events, failure classification, and diagnostic evidence |
+| Conformance | Contract validation, compatibility, security, error behavior, Provider admission tests, and activation evidence |
+
 ## Locked decisions
 
 - OpenAgriNet has three ecosystem actor roles: Consumer, Provider, and Network Operator.
