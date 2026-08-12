@@ -1,6 +1,6 @@
 # OpenAgriNet architecture
 
-Status: Accepted foundation, 2026-08-12
+Status: Proposed to be reviewed with DC
 
 ## The idea
 
@@ -122,7 +122,7 @@ Every component treats the components it calls and the components that call it a
 - Experience Layer, Network Exchange, and Provider Capability Layer are logical ownership boundaries, not prescribed deployment units.
 - Experience Application, Registry, Exchange, and Provider Service are the four logical component types. Supporting capabilities do not become peer components without an independently justified responsibility boundary.
 - The Registry is a component inside Network Exchange. It is not a fourth layer, a Provider-content store, or a general Consumer identity store.
-- A network-of-networks model is outside the starting scope. The architecture may revisit federation only when a validated requirement cannot be met by the accepted model.
+- A network-of-networks model is outside the starting scope. The architecture may revisit federation only when a validated requirement cannot be met by the proposed model.
 - The architecture remains implementation-neutral until a later deployment or technology decision is supported by requirements and measurable tradeoffs.
 
 ## Interaction model
@@ -379,6 +379,184 @@ For example, the Network Operator may operate the Registry and Exchange under th
 
 Co-location may optimize calls, but it must preserve contracts, policy checks, state ownership, provenance, audit, and replaceability. Moving a Provider Service into the Network Operator's deployment does not move its content, retrieval indexes, domain decisions, or accountability into the Exchange.
 
+## Information model and authority
+
+Status: Proposed for review.
+
+The information model defines the concepts that the building blocks create, read, change, and exchange. It does not define database tables or wire-format fields. Detailed schemas and serialization belong in the derived OpenAgriNet information model specification.
+
+**Every mutable information concept has one accountable authority at a time.** Other stores must identify themselves as caches, projections, delivery copies, indexes, or operational evidence, and must declare how they reconcile with the authority.
+
+### Authority rules
+
+- A building block does not become authoritative merely because it hosts, routes, caches, indexes, or observes information.
+- Authority follows the role responsibility: Registry governs participation, Exchange governs network interaction delivery, Experience governs actor-facing session state, and Provider Service governs domain workflow and results.
+- Every copy declares its authoritative source, purpose, freshness expectation, retention rule, and reconciliation direction.
+- Results, events, receipts, and projections retain stable references to the authoritative record and the participant that produced them.
+- Moving a building block between organisations or deployments does not change information authority.
+
+### Core concepts and authority
+
+| Information domain | Core concepts | Accountable authority | Boundary |
+|---|---|---|---|
+| Participation and governance | Network, Participant, Role Assignment, Credential Reference, Participation Decision, Participation Status | Registry under Network Operator governance | Contains governed participant information, not Consumer identity or Provider domain content |
+| Capability and contract | Capability Declaration, supported interaction types, Schema Profile, Endpoint, compatibility and conformance status | Registry for the accepted declaration | A Provider authors its declaration; the Registry is authoritative for what the network has accepted |
+| Experience | Experience Session, Channel Session, Conversation Context, Presentation Preference | Experience | Durable domain profiles and outcomes do not become Experience state |
+| Consumer trust | Consumer Identity Reference, Authentication Evidence, Consent Grant or Reference, permitted disclosure | Authority remains open; Experience carries the minimum evidence required by the interaction | The Registry must not accumulate Consumer identity or consent data for convenience |
+| Interaction and delivery | Interaction, Correlation, Route Decision, Delivery Attempt, Delivery Status, callback or push obligation | Exchange | A copy of a Provider result is delivery state, not authoritative domain state |
+| Provider domain | Domain Resource, Domain Workflow, Provider Status, Action, authoritative receipt | Provider Service | The Provider remains accountable when its adapter or service is managed by the Network Operator |
+| Result and provenance | Provider Result, Evidence Reference, Provenance Record, Provider Event | Provider Service | Experience and Exchange may retain only the copies required for presentation, delivery, audit, or reconciliation |
+| Knowledge | Source Artifact, Content Version, Approved Content, Publication, Retrieval Projection, knowledge provenance | Knowledge Provider Service; the submitting publisher remains authoritative for the source it supplied | Registry contains capability or catalog metadata, not documents, passages, embeddings, or generated answers |
+| Operations | Health Observation, Metric, Log Record, Trace, Audit Event, Reconciliation Case | Originating building block is accountable for meaning; operational systems are authoritative for retained evidence | Operational evidence does not replace the underlying governance, interaction, or domain record |
+
+### Concept relationships
+
+This diagram shows information relationships and authority boundaries. It is not a runtime interaction flow.
+
+```mermaid
+flowchart LR
+  subgraph EA["Experience authority"]
+    ES["Experience Session"]
+    CC["Conversation Context"]
+    ES --> CC
+  end
+
+  subgraph RA["Registry authority"]
+    PT["Participant and Role"]
+    CD["Capability Declaration"]
+    SP["Schema Profile"]
+    EP["Endpoint and Trust Status"]
+    PT --> CD
+    SP --> CD
+    EP --> CD
+  end
+
+  subgraph XA["Exchange authority"]
+    IN["Interaction and Correlation"]
+    RD["Route Decision"]
+    DS["Delivery Status"]
+    IN --> RD
+    IN --> DS
+  end
+
+  subgraph PA["Provider authority"]
+    WF["Domain Workflow"]
+    RS["Provider Result or Event"]
+    PR["Provenance and Receipt"]
+    WF --> RS
+    RS --> PR
+  end
+
+  ID["Identity and Consent Evidence<br/>(authority open)"]
+
+  CC -->|"supplies permitted context"| IN
+  ID -->|"supplies minimum evidence"| IN
+  CD -->|"declares eligible capability"| RD
+  IN -->|"references"| WF
+  RS -->|"is delivered under"| DS
+```
+
+### Knowledge authority and projections
+
+Knowledge publishing creates an approved, versioned Provider record. Retrieval indexes and embeddings are rebuildable projections of that approved content.
+
+```mermaid
+flowchart LR
+  S["Source Artifact<br/>publisher authority"]
+  V["Content Version<br/>Knowledge Provider"]
+  A["Approved Content<br/>Knowledge Provider authority"]
+  P["Publication Record<br/>Knowledge Provider authority"]
+  M["Capability or Catalog Metadata<br/>Registry authority"]
+  R["Retrieval Projection<br/>rebuildable"]
+  O["Knowledge Result<br/>with provenance"]
+
+  S --> V
+  V --> A
+  A --> P
+  P -->|"registers governed metadata"| M
+  A -->|"projects into"| R
+  R -->|"supports"| O
+  O -->|"references"| A
+```
+
+Withdrawing or superseding approved content must invalidate its publication and derived projections. Deleting an index does not delete the approved content, and deleting a Registry record does not by itself delete Provider content.
+
+### Identifiers and correlation
+
+| Identifier | Created or governed by | Purpose and stability |
+|---|---|---|
+| Participant identity | Registry | Stable identity for a governed participant across capability and endpoint changes |
+| Capability identity | Registry | Stable identity for one declared capability; its compatible versions remain traceable |
+| Schema profile identity and version | Registry | Identifies the exact common or domain profile used by an interaction |
+| Interaction identity | Exchange | Identifies one Advise, Observe, or Act interaction from acceptance to terminal delivery state |
+| Correlation identity | Exchange or originating Experience | Relates composite interactions, callbacks, polls, notifications, and operational evidence without merging their states |
+| Delivery-attempt identity | Exchange | Distinguishes retries and channel deliveries while preserving the interaction identity |
+| Provider workflow reference | Provider Service | Links the network interaction to the authoritative Provider workflow or domain record |
+| Result, event, and receipt identity | Provider Service | Provides stable references for provenance, status observation, audit, and reconciliation |
+| Content identity and version | Knowledge Provider Service | Preserves identity across edits, translations, approvals, publication, withdrawal, and projection rebuilds |
+| Consent reference | Consent authority, to be decided | References the applicable permission without copying unnecessary Consumer identity or consent content |
+
+Identifiers must be globally unambiguous within their declared scope. Reprocessing, retries, projection rebuilds, or representation changes must not silently create a new authoritative identity for the same record.
+
+### Lifecycle ownership
+
+| Lifecycle | Minimum distinctions | Authority |
+|---|---|---|
+| Participant | Draft, submitted, approved, suspended, withdrawn | Registry |
+| Capability declaration | Draft, submitted, accepted, deprecated, withdrawn | Registry |
+| Interaction delivery | Received, validated, routed, accepted, delivered, failed, expired | Exchange |
+| Provider workflow | Received, accepted, in progress, completed, failed, cancelled | Provider Service |
+| Knowledge content | Ingested, validated, approved, published, superseded, withdrawn | Knowledge Provider Service |
+| Consent | Granted, restricted, revoked, expired | Consent authority, to be decided |
+
+The exact state machines remain specification work. The architecture requires the distinctions because network delivery, Provider execution, and Consumer presentation must not collapse into one status. In particular, Exchange acceptance does not prove Provider completion.
+
+### Authoritative records and projections
+
+| Copy or projection | Authoritative source | Purpose | Reconciliation direction |
+|---|---|---|---|
+| Exchange cache of participant and capability records | Registry | Low-latency discovery and routing | Registry to Exchange cache |
+| Experience view of interaction status | Exchange for delivery; Provider Service for domain status | Present progress to the actor | Exchange and Provider evidence to Experience |
+| Exchange copy of a Provider result | Provider Service | Delivery, retry, audit, and short-lived reconciliation | Provider Service to Exchange copy |
+| Knowledge retrieval index or embedding store | Approved Content in Knowledge Provider Service | Search and retrieval | Approved Content to projection; projection is rebuildable |
+| Operational dashboard or analytical view | Evidence emitted by each building block | Diagnosis, planning, and support | Origin evidence to operational projection |
+| Conformance or compatibility cache | Registry-accepted declaration and evidence | Faster admission and runtime validation | Registry to cache |
+
+No projection may become the only surviving copy of information whose authority lies elsewhere. Reconciliation must move from the authority to the projection unless an explicit, audited authority-transfer process says otherwise.
+
+### Privacy and disclosure boundaries
+
+- Experience collects and retains only the Consumer information required for the channel and interaction.
+- Exchange receives only the identity, context, consent, and policy evidence required to validate, route, correlate, and deliver the interaction.
+- Provider Service receives only the information required to fulfil the declared capability and meet its accountable retention obligations.
+- Registry excludes Consumer conversations, profiles, consent content, Provider documents, Provider results, and domain records.
+- Logs, metrics, traces, dashboards, and audit records exclude raw Consumer or Provider content unless a specific authorized operational purpose requires it.
+- PII masking at the Experience boundary does not remove the obligation to minimize and protect data in the Exchange, Provider Service, Registry, and operational systems.
+
+### Extension and versioning rules
+
+- The common model contains only concepts and relationships shared across Provider domains.
+- A domain profile extends the common model for knowledge, weather, mandi, livestock, schemes, booking, credit, grievances, or another declared capability.
+- Every profile has an identity, version, authority, compatibility declaration, and Registry acceptance status.
+- An extension may add domain meaning but must not redefine a core concept, change its authority, or bypass identity, consent, policy, provenance, or audit requirements.
+- Channel representation, language, persona, and presentation metadata do not become part of the Provider domain model unless the Provider result depends on them.
+- Breaking changes require a new incompatible version and an explicit migration or coexistence rule.
+
+### Information-model validation against use cases
+
+| Use-case family | Authoritative information | Required projections or references |
+|---|---|---|
+| Advisory, schemes, frequently asked questions, and learning | Approved knowledge or advisory result in Provider Service | Retrieval projection, provenance, Experience representation |
+| Weather, mandi prices, milk records, benefits, and application status | Domain observation and status in the relevant Provider Service | Exchange delivery state and Experience presentation |
+| Booking, applications, grievances, crop profiles, and escalation | Provider workflow, domain state, status, and receipt | Interaction correlation and Consumer-facing progress view |
+| Alerts, reminders, and farm calendar | Provider event or schedule authority; Exchange delivery obligation | Consent reference, subscription or preference, delivery attempts |
+| Knowledge ingestion and synchronization | Source artifact, approved content, publication, and versions in Knowledge Provider Service | Registry metadata and rebuildable retrieval projections |
+| Provider, capability, and schema onboarding | Participant, declaration, schema profile, endpoint, trust, and status in Registry | Exchange cache and conformance evidence |
+| Voice, language, telephony, persona, and conversation memory | Experience session and representation state | References to Provider results; no duplication of authoritative domain state |
+| Operational dashboards, health, and feedback analytics | Originating operational or feedback record | Network-level operational and analytical projections |
+
+The current use-case families fit these authority boundaries. The unresolved pressure point is Consumer identity, durable profile, consent, preference, and subscription authority. The architecture must resolve that boundary before it defines the corresponding interfaces or schemas.
+
 ## Runtime and lifecycle paths
 
 Runtime network interactions use the Exchange. The Registry supplies the governed information that the Exchange needs to discover and route an eligible Provider Service.
@@ -449,41 +627,43 @@ The current use-case inventory fits the component model without adding a fifth t
 | Feedback capture and analytics | Experience Application to Exchange to feedback-owning Provider Service; Operator Experience Application reads the resulting analytics |
 | Operational dashboards and API health | Operator Experience Application reading operational evidence from the Registry, Exchange, and Provider Services |
 
-Operational dashboards, health monitoring, and feedback analytics require each component to expose consistent operational evidence. This is a cross-component supportability contract, not a fifth top-level business component. If network-wide aggregation later requires independent ownership or scaling, the architecture may separate it without changing the four component types.
+Operational dashboards, health monitoring, and feedback analytics require each building block to expose consistent operational evidence. This is a cross-cutting supportability contract, not a fifth top-level business building block. If network-wide aggregation later requires independent ownership or scaling, the architecture may separate its implementation without changing the four building blocks.
 
 ## Architecture review checkpoint
 
-The architecture is ready for agreement on its foundation. Reviewers are being asked to confirm the following approach before the document proceeds into detailed models and specifications.
+Status: Proposed to be reviewed with DC.
 
-| Area | Foundation proposed for agreement |
+This checkpoint asks DC to review the proposed foundation before the architecture proceeds into normative models and specifications.
+
+| Area | Proposal for DC review |
 |---|---|
 | Ecosystem | Consumer, Provider, and Network Operator are the three actor roles |
 | Interactions | Advise, Observe, and Act are composable domain interaction types; trigger, completion, channel, and representation remain independent |
 | Ownership | Experience Layer, Network Exchange, and Provider Capability Layer are the three logical ownership layers |
-| Components | Experience Application, Registry, Exchange, and Provider Service are the four logical component types; Registry belongs inside Network Exchange |
+| Building blocks | Experience, Registry, Exchange, and Provider Service are the four logical responsibility boundaries; Registry belongs inside Network Exchange |
 | Role composition | One organisation may play more than one role, but each interaction preserves its role contract, state ownership, policy, provenance, and audit boundaries |
 | Flow separation | Runtime network interactions use the Exchange; publishing, onboarding, and governance address the component that owns their lifecycle |
 | Extensibility | Discovery, ingestion, channels, language, persona, and adapters extend an owning component rather than becoming top-level components by default |
-| Validation | Every architectural addition must map to the use-case inventory and identify its actors, components, state owner, interaction path, and operational evidence |
+| Validation | Every architectural addition must map to the use-case inventory and identify its actors, building blocks, state authority, interaction path, and operational evidence |
 
-Agreement at this checkpoint accepts these responsibility boundaries as the basis for further work. It does not yet approve field-level information models, API payloads, protocol bindings, security profiles, deployment technologies, or service-level objectives.
+DC agreement at this checkpoint will establish these responsibility boundaries as the basis for further work. It will not approve field-level information models, API payloads, protocol bindings, security profiles, deployment technologies, or service-level objectives.
 
 ### Pending architecture work
 
-The remaining architecture work will be completed in the following order. Later work may refine an accepted boundary only when a use case, quality requirement, or interface proves that the current boundary does not hold.
+The remaining architecture work will be completed in the following order. Later work may refine a proposed boundary when a use case, quality requirement, DC review finding, or interface proves that the boundary does not hold.
 
-| Order | Work item | Completion evidence |
-|---|---|---|
-| 1 | Requirements and design forces | Prioritized functional, trust, extensibility, operational, and architecture constraints, traced to the use cases |
-| 2 | Information model and authority | Core concepts, relationships, identifiers, lifecycle, authoritative owner, projections, privacy boundaries, and extension rules |
-| 3 | Representative end-to-end flows | Success and failure diagrams for immediate response, composite interaction, callback, notification, onboarding, knowledge publishing and retrieval, governance, and reconciliation |
-| 4 | Component deep-dives | Purpose, does, never does, assumptions, owned state, provided and required contracts, extension points, failure evidence, and supporting use cases for every component |
-| 5 | Interface and contract architecture | Interface map covering caller, provider, outcome, authority, synchronous or asynchronous behavior, failure, versioning, and contract owner |
-| 6 | Shared trust and control boundaries | Identity, consent, authorization, policy evidence, schema compatibility, status, errors, idempotency, provenance, receipts, and audit |
-| 7 | Extensibility and conformance | Verifiable procedures for adding a Provider, capability, schema, channel, language, persona, or adapter without changing unrelated components |
-| 8 | Operability and supportability | Component health, operational evidence, dashboards, diagnosis, administration, reconciliation, and network-wide traceability |
-| 9 | Deployment and allocation views | Network Operator core, first-party Provider Service, external Provider, managed Provider Service, scaling, and isolation boundaries |
-| 10 | Architecture validation | Requirement-to-component mapping and row-level use-case traceability with unresolved pressure points recorded as open items |
+| Order | Work item | Current status | Completion evidence |
+|---|---|---|---|
+| 1 | Requirements and design forces | Drafted, pending DC review | Prioritized functional, trust, extensibility, operational, and architecture constraints, traced to the use cases |
+| 2 | Information model and authority | Proposed for review | Core concepts, relationships, identifiers, lifecycle, authoritative owner, projections, privacy boundaries, and extension rules |
+| 3 | Representative end-to-end flows | Partial draft | Success and failure diagrams for immediate response, composite interaction, callback, notification, onboarding, knowledge publishing and retrieval, governance, and reconciliation |
+| 4 | Building-block deep-dives | Landscape and responsibility outline drafted | Purpose, does, never does, assumptions, authoritative state, provided and required contracts, extension points, failure evidence, and supporting use cases for every building block |
+| 5 | Interface and contract architecture | Pending | Interface map covering caller, provider, outcome, authority, synchronous or asynchronous behavior, failure, versioning, and contract owner |
+| 6 | Shared trust and control boundaries | Requirements drafted; allocation pending | Identity, consent, authorization, policy evidence, schema compatibility, status, errors, idempotency, provenance, receipts, and audit |
+| 7 | Extensibility and conformance | Principles drafted; procedures pending | Verifiable procedures for adding a Provider, capability, schema, channel, language, persona, or adapter without changing unrelated components |
+| 8 | Operability and supportability | Requirements and landscape drafted; detailed design pending | Building-block health, operational evidence, dashboards, diagnosis, administration, reconciliation, and network-wide traceability |
+| 9 | Deployment and allocation views | Role composition drafted; allocation views pending | Network Operator core, first-party Provider Service, external Provider, managed Provider Service, scaling, and isolation boundaries |
+| 10 | Architecture validation | Use-case-family mapping drafted; row-level traceability pending | Requirement-to-building-block mapping and row-level use-case traceability with unresolved pressure points recorded as open items |
 
 ### Derived specifications
 
@@ -501,7 +681,9 @@ The architecture will derive a set of normative specifications. The architecture
 | Operational evidence | Health, metrics, logs, traces, audit events, failure classification, and diagnostic evidence |
 | Conformance | Contract validation, compatibility, security, error behavior, Provider admission tests, and activation evidence |
 
-## Locked decisions
+## Proposed decisions for DC review
+
+The following decisions describe the current architecture proposal. They are not approved or locked until DC reviews them.
 
 - OpenAgriNet has three ecosystem actor roles: Consumer, Provider, and Network Operator.
 - The Consumer is the farmer.
@@ -515,8 +697,8 @@ The architecture will derive a set of normative specifications. The architecture
 - OpenAgriNet has three logical ownership layers: Experience Layer, Network Exchange, and Provider Capability Layer.
 - Experience Layer serves actor-facing experiences for Consumers, Providers, and the Network Operator.
 - The Registry is the control plane for the Network Exchange.
-- The four logical component types are Experience Application, Registry, Exchange, and Provider Service.
-- The Registry is a component within the Network Exchange layer, not a fourth layer.
+- The four stable architecture building blocks are Experience, Registry, Exchange, and Provider Service.
+- The Registry is a building block within the Network Exchange layer, not a fourth layer.
 - Runtime network interactions use the Exchange; Provider publishing and Network Operator governance address the component that owns their lifecycle.
 - The Network Operator may operate a first-party Provider Service, but it remains logically and contractually separate from the Registry and Exchange.
 - A Provider protocol adapter is internal to the Provider Capability Layer, even when offered as a managed implementation.
@@ -525,6 +707,9 @@ The architecture will derive a set of normative specifications. The architecture
 
 | Item | Why it matters | Owner and tradeoff |
 |---|---|---|
-| Define the interaction contracts | The accepted types still need request, result, error, identity, consent, and status contracts | Architecture. One common envelope improves interoperability; type-specific contracts make boundaries clearer |
+| Define the interaction contracts | The proposed types still need request, result, error, identity, consent, and status contracts | Architecture. One common envelope improves interoperability; type-specific contracts make boundaries clearer |
 | Define the Provider capability model | Providers need a consistent way to declare Advise, Observe, and Act capabilities | Architecture and domain owners. A general model improves extensibility; a detailed model improves validation |
-| Define the Registry information model and identity boundaries | Registry placement is accepted, but the records and separation between participant trust, Consumer identity, and consent remain open | Architecture and governance. One model simplifies administration; strict identity boundaries reduce data concentration and inappropriate access |
+| Resolve Consumer identity, durable profile, consent, preference, and subscription authority | These concepts cross Experience, Exchange, and Provider boundaries but must not be placed in the Registry for convenience | Architecture, governance, privacy, and domain owners. Central authority simplifies access; distributed or Consumer-controlled authority reduces concentration but complicates verification and revocation |
+| Define retention, deletion, and reconciliation rules | Copies, projections, delivery evidence, Provider records, and operational evidence need different retention and deletion behavior | Architecture, privacy, operations, and domain owners. Longer retention improves diagnosis and audit; minimization reduces privacy and security exposure |
+| Confirm the Registry catalog-metadata boundary | The Registry needs enough metadata for discovery without becoming a knowledge or Provider-domain store | Architecture and governance. Rich metadata improves discovery; narrow metadata preserves Provider authority and limits duplication |
+| Define normative identifier and lifecycle contracts | The conceptual identifiers and minimum states need exact creation, transition, compatibility, and terminal-state rules | Architecture and specification owners. One shared lifecycle simplifies interoperability; domain-specific lifecycles preserve domain meaning |
