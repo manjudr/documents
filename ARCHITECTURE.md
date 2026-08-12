@@ -52,11 +52,16 @@ All three are the same thing wearing different clothes: an **AI assistant that a
 
 Every answer a farmer gets comes from one of three places. Two of them are catalogs — someone publishes into them and the content sits there until searched. The third has no catalog behind it at all.
 
+> **Read this section knowing one thing first: the content catalog is being retired.**
+> Schemes and advisories are moving to a vector database (Qdrant). New schemes are already ingested that way; the content catalog now only serves schemes loaded before the migration began, and the rest are being moved.
+> Everything below describes what is **running today**, because that is what a re-architecture has to migrate from — but treat the content catalog as a legacy store with an end date, not a peer of the other two.
+> *(Team direction, stated 12 August 2026. Not visible in code — the code still shows the pre-migration shape, which is why this document and the source disagree.)*
+
 | | **Content catalog** | **Knowledge catalog** | **Live data** |
 |---|---|---|---|
-| Who publishes | agriculture departments, ICAR, scheme owners | the internal content team | **nobody** |
+| Who publishes | agriculture departments, ICAR, scheme owners — **but new schemes now bypass this** | the internal content team | **nobody** |
 | What | scheme details, advisory articles, videos, scholarships | scheme guideline PDFs, circulars, manuals | mandi prices, weather forecasts |
-| Approval | organisation approved once, content never checked | two humans, in sequence | not applicable |
+| Approval | organisation approved once, content never checked | staged review, then a separate promotion to production | not applicable |
 | Stored | yes — structured rows | yes — meaning-indexed passages | **no** — only reference data |
 | Searched by | matching on category and fields | closeness of meaning | fetched fresh per request |
 
@@ -84,7 +89,7 @@ What is known about it:
 
 > Two document stores, not one. The assistant searches its own; the node searches this one. **Which one the pipeline actually fills is a deployment setting, not a decision recorded anywhere in the code.** Reading the running pipeline's configuration would settle it in minutes — see §10.
 
-**A note on scope.** These three cover every answer to a *general* question.**A note on scope.** These three cover every answer to a *general* question. They do not cover questions about a specific farmer — "has my PM-Kisan payment arrived?" — which are answered by a fourth path: a live, OTP-authenticated query against a government system, holding no data of its own. That path is §9.
+**A note on scope.** These four cover every answer to a *general* question. They do not cover questions about a specific farmer — "has my PM-Kisan payment arrived?" — which are answered by a fourth path: a live, OTP-authenticated query against a government system, holding no data of its own. That path is §9.
 
 ---
 
@@ -101,8 +106,10 @@ These are the same three sources introduced in §2, now seen from the publishing
 | | Who publishes | What lands | Approval | Has an API? |
 |---|---|---|---|---|
 | **Content catalog** | External depts, ICAR | a flat row + a **link** | org approved once | yes |
-| **Knowledge catalog** | Internal content team | document passages, by meaning | **two humans, per document** | **no** |
+| **Knowledge catalog** | Internal content team | document passages, by meaning | **staged, per document** | yes |
 | **Live data** | *nobody* | nothing | — | — |
+
+> **The scheme story is changing under this table.** New schemes no longer arrive through the content catalog at all — they go through the document pipeline into a vector database. The content catalog is serving the schemes loaded before that switch, and those are being moved across. So of the two publish APIs, the one still gaining new material is the knowledge one.
 
 ---
 
@@ -224,7 +231,7 @@ graph LR
 2. **Two of the three have an API, and they are very different in character.** The content catalog takes a single insert straight to live. The knowledge catalog has staged review, per-action permissions and an audit trail. Live data has nothing at all.
 3. **Only publishing needs a login.** Every publish route checks a token. Every search route checks nothing.
 4. **The approval happens once, to the organisation — not to the content.** After that, everything that account uploads is live the moment it is saved.
-5. **Outsiders are checked less than staff.** Content from departments gets no review. Documents from the internal team need two people to sign off.
+5. **Outsiders are checked less than staff.** Content from departments gets no review at all. Documents from the internal team pass through staged approval and a separate production promotion.
 6. **The system stores a link, not the file.** The PDF or video stays on the publisher's own server. Nobody ever checks whether it still exists.
 7. **The three stores never talk to each other.** Content tables, the vector DB, and the map data are completely separate. Nothing joins them.
 8. **Beckn does not appear anywhere in publishing.** Not in what is sent, not in what is stored. It is built later, at search time.
@@ -620,7 +627,7 @@ sequenceDiagram
 
 > **The address is not literally `/search`.** The node exposes `mobility/search` and `dsep/search`; there is no bare `/search` route. The configured endpoint carries the prefix, and every tool appends `/search` to it. Worth knowing before anyone tries to call it from the URL in the docs.
 
-**The catch:** the *scheme-document* tool — the one for "what are the eligibility rules" rather than "what is this scheme" — sends `category.descriptor.code` = `scheme-agri-qdrant`, and the node's list has **no entry for it**. It falls through to the generic index (§6, gap 8). Verified on both sides: the constant in the tool, and its absence from the node's chain.
+**The catch:** the *scheme-document* tool — the one for "what are the eligibility rules" rather than "what is this scheme" — sends `category.descriptor.code` = `scheme-agri-qdrant`, and the node's list has **no entry for it**. It falls through to the generic index (§6, gap 8). Verified on both sides: the constant in the tool, and its absence from the node's chain. This is the migration showing through — the tool is already speaking to a destination the node hasn't been taught yet.
 
 ---
 
@@ -712,9 +719,11 @@ The reason for this document. Restated plainly:
    - **Scheme documents.** The tool sends the category `scheme-agri-qdrant`. That string appears nowhere in the node — no branch, no mention. It falls through to generic search.
    - **Mandi prices.** The tool sends the category `price-discovery`, which the node *does* recognise — but the node only reaches its mandi service if `item.descriptor.code` is also `mandi`, and **no client in any of the three products sets that field.** So this falls through too, on one of the most-asked questions in the system.
 
-   Neither fails loudly. Both return plausible text from the wrong source, and nothing in the response says so. Fix or remove — don't carry either forward. *(Read from this repository's source; the running deployment was not inspected — see §10.)*
+   Neither fails loudly. Both return plausible text from the wrong source, and nothing in the response says so.
 
-9. **The publish API cannot write the fields that search filters on.** Verified in code. Scheme search narrows the content table on two columns, `usecase` and `scheme_id` — and **no publish route sets either one**. Neither appears in any insert or update. The same is true of the six columns holding the actual scheme text. So anything published through the documented API arrives with those columns empty and is invisible to the search that was meant to find it. The rows that *do* answer scheme questions were loaded some other way, outside every endpoint in §7. Two separate publishing stories, and only one of them has an API.
+   **They are not the same kind of problem, though.** The scheme-document one is a **half-finished migration** — schemes are moving to a vector database, and the client was updated to send the new label before the node learned to route it. It will resolve when the migration lands. The mandi one has no such explanation: it is simply a field nobody sets, on one of the most-asked questions in the system, and it will not fix itself. *(Read from this repository's source; the running deployment was not inspected — see §10.)*
+
+9. **The publish API cannot write the fields that search filters on.** Verified in code. Scheme search narrows the content table on two columns, `usecase` and `scheme_id` — and **no publish route sets either one**. Neither appears in any insert or update. The same is true of the six columns holding the actual scheme text. So anything published through the documented API arrives with those columns empty and is invisible to the search that was meant to find it. The rows that *do* answer scheme questions were loaded some other way, outside every endpoint in §7. Two separate publishing stories, and only one of them has an API. **Worth weighing before fixing:** this path is being retired, so the question is whether it survives long enough to be worth repairing.
 
 10. **The node's document index is hardcoded, and which pipeline fills it is unrecorded.** It backs the `knowledge-advisory` category *and* catches everything unrecognised. Its address is an **IP literal in the node's source, over plain HTTP** — not configuration, not TLS. It is a second document store, separate from the one the assistant searches. A document pipeline exists and can write to a store like it, but **its target is chosen by environment variable and its shipped defaults point elsewhere**, so the connection is inferred, not documented. Three questions for the redesign: who owns it, is it the same content as the assistant's store, and should an unroutable request be answered at all rather than refused?
 
