@@ -419,11 +419,66 @@ sequenceDiagram
 1. The model picks the mandi tool.
 2. **The assistant resolves "tomato" → a commodity code itself**, from a JSON file bundled into it. No network call.
 3. It posts a labelled request to the one address. No authentication.
-4. The node matches the label and calls its mandi service.
+4. The node reads the label. **In this repo's source it does not reach the mandi service** — see the request body below.
 5. **The node resolves the location** — lat/lon → `districtcode` + `marketcode` by point-in-polygon against master data.
 6. The node calls Agmarknet **live**. If nothing comes back, it retries without `marketcode` to widen the search.
 7. The node converts the flat rows into a Beckn catalog **at that moment**, and returns it in the same HTTP response.
 8. **Nothing is stored.** The next identical question repeats every step.
+
+**What the assistant actually sends.** This is the whole translation from the farmer's sentence to a structured request — nothing else happens in between:
+
+```json
+{
+  "context": {
+    "domain": "schemes:vistaar",
+    "action": "search",
+    "version": "1.1.0",
+    "bap_id": "<from configuration>",
+    "bap_uri": "<from configuration>",
+    "bpp_id": "<from configuration>",
+    "bpp_uri": "<from configuration>",
+    "transaction_id": "<fresh uuid>",
+    "message_id": "<fresh uuid>",
+    "timestamp": "2026-08-12T06:15:00.000Z",
+    "ttl": "PT10M",
+    "location": { "country": { "code": "IND" }, "city": { "code": "*" } },
+    "tags": { "session_id": "...", "question_id": "..." }
+  },
+  "message": {
+    "intent": {
+      "category": { "descriptor": { "code": "price-discovery" } },
+      "item":     { "descriptor": { "name": "Tomato" } },
+      "fulfillment": {
+        "end": {
+          "location": {
+            "descriptor": { "name": "Nashik" },
+            "gps": "19.9975,73.7898"
+          }
+        }
+      },
+      "tags": [
+        { "code": "from_date", "value": "2026-08-11" },
+        { "code": "to_date",   "value": "2026-08-12" }
+      ]
+    }
+  }
+}
+```
+
+Read it against the question and the mapping is one-to-one:
+
+| In the farmer's sentence | Where it lands | Who decided it |
+|---|---|---|
+| *(nothing — it's the tool choice)* | `category.descriptor.code` = `price-discovery` | **the model, by picking the mandi tool** |
+| "tomato" | `item.descriptor.name` | the model |
+| "Nashik" | `fulfillment.end.location` — name **and** gps | the model, then the geocoding tool |
+| "today" | the `from_date` / `to_date` tags | the tool's own date logic |
+
+- **`category.descriptor.code` is the routing decision, and it is a constant in the tool's source.** It cannot vary with the question. Pick the mandi tool and it is always `price-discovery`.
+- **`item.descriptor` carries only a `name`, and no `code` — and that breaks this path.** The node routes a `price-discovery` request to its mandi service **only if `item.descriptor.code` equals `mandi`**. This request has no `code` at all, so it fails that test and falls through to the generic index. No client in any of the three products sets it. See §6, gap 8 — this is the second instance of the same fault, and it sits on one of the most-asked questions there is.
+- `city.code` is `"*"` — a wildcard. The city field Beckn would route on is unused; the real location rides in `fulfillment`.
+- `bpp_id` and `bpp_uri` are read from configuration and **asserted, never verified** — the sender names its own destination.
+- `transaction_id` is fresh every call, so nothing correlates two requests.
 
 **Two lookups, in two different systems — this is the part that gets missed:**
 
@@ -463,6 +518,34 @@ sequenceDiagram
 5. **The tool returns markdown text, not a Beckn catalog.** There is no `on_search` structure anywhere on this path.
 6. **The node is never involved.** The vector database is the only thing consulted.
 
+**What the assistant actually sends — and this is the point of showing it:**
+
+```json
+{
+  "q": "will I get money if my crop fails?",
+  "limit": 10,
+  "filter_string": "type:document",
+  "search_method": "hybrid",
+  "hybrid_parameters": {
+    "retrievalMethod": "disjunction",
+    "rankingMethod": "rrf",
+    "alpha": 0.5,
+    "rrfK": 60
+  }
+}
+```
+
+That is the entire request. Put it beside Example 1 and the contrast is the whole story:
+
+| | Live data / content catalog | Knowledge catalog |
+|---|---|---|
+| Envelope | ~40 lines of Beckn `context` | none |
+| The question itself | **discarded** — only a code and a name survive | **sent verbatim**, as `q` |
+| What routes it | a category label the tool hardcodes | nothing — one index, one query |
+| Sent to | the provider node | the search engine directly |
+
+**The farmer's actual words only survive on this path.** On the Beckn paths the sentence is thrown away at the assistant and replaced with a label plus a couple of parameters; the node never sees what was asked. Here the sentence *is* the request.
+
 > This path proves the point: **most of what a farmer asks is answered without Beckn being involved.**
 
 ---
@@ -497,7 +580,27 @@ sequenceDiagram
 6. A **category-specific converter** turns those rows into a Beckn catalog. There is no shared mapper — ICAR schemes, PM-Kisan and literacy content each have their own.
 7. The catalog returns in the same HTTP response. The assistant summarises it for the farmer.
 
-**The catch:** the scheme-search tool sends a label the node's list has **no entry for**, so it falls through to the generic index (§6).
+**What the assistant actually sends.** Same envelope as the mandi request — only the `intent` differs, and it is smaller:
+
+```json
+{
+  "context": { "…identical in shape to Example 1…": "" },
+  "message": {
+    "intent": {
+      "category": { "descriptor": { "code": "schemes-agri" } },
+      "item":     { "descriptor": { "name": "PM-Kisan" } }
+    }
+  }
+}
+```
+
+- **Two fields carry the entire query**: one label naming the database, one name naming the scheme.
+- No location, no dates, no free text. The farmer's sentence is gone by this point.
+- Change `schemes-agri` to `price-discovery` and the identical request becomes a mandi lookup. **The label is the whole routing decision** — which is what "the caller names the database" means in practice.
+
+> **The address is not literally `/search`.** The node exposes `mobility/search` and `dsep/search`; there is no bare `/search` route. The configured endpoint carries the prefix, and every tool appends `/search` to it. Worth knowing before anyone tries to call it from the URL in the docs.
+
+**The catch:** the *scheme-document* tool — the one for "what are the eligibility rules" rather than "what is this scheme" — sends `category.descriptor.code` = `scheme-agri-qdrant`, and the node's list has **no entry for it**. It falls through to the generic index (§6, gap 8). Verified on both sides: the constant in the tool, and its absence from the node's chain.
 
 ---
 
@@ -584,7 +687,12 @@ The reason for this document. Restated plainly:
 
 7. **Nobody checks individual content.** Approval is at the organisation level only. If the new network requires per-item trust, that's new work, not a migration.
 
-8. **One search path is silently broken.** The assistant's scheme-document search sends a category label that the provider node doesn't recognise, so it quietly falls through to generic search instead. Verified on both sides. Fix it or remove it — don't carry it forward.
+8. **Two search paths are silently broken, and the mechanism is the same.** Verified on both sides — the constant in the client, and the routing chain in the node.
+
+   - **Scheme documents.** The tool sends the category `scheme-agri-qdrant`. That string appears nowhere in the node — no branch, no mention. It falls through to generic search.
+   - **Mandi prices.** The tool sends the category `price-discovery`, which the node *does* recognise — but the node only reaches its mandi service if `item.descriptor.code` is also `mandi`, and **no client in any of the three products sets that field.** So this falls through too, on one of the most-asked questions in the system.
+
+   Neither fails loudly. Both return plausible text from the wrong source, and nothing in the response says so. Fix or remove — don't carry either forward. *(Read from this repository's source; the running deployment was not inspected — see §10.)*
 
 9. **The publish API cannot write the fields that search filters on.** Verified in code. Scheme search narrows the content table on two columns, `usecase` and `scheme_id` — and **no publish route sets either one**. Neither appears in any insert or update. The same is true of the six columns holding the actual scheme text. So anything published through the documented API arrives with those columns empty and is invisible to the search that was meant to find it. The rows that *do* answer scheme questions were loaded some other way, outside every endpoint in §7. Two separate publishing stories, and only one of them has an API.
 
@@ -740,33 +848,12 @@ Month Or Season, Publish Date, Region, Target Users
 
 ### A search request
 
-`POST /mobility/search`. This is the mandi example from §4:
+`POST /mobility/search`. **The verified request body is in §4, Example 1** — read it there rather than duplicating it here.
 
-```json
-{
-  "context": {
-    "domain": "schemes:vistaar",
-    "action": "search",
-    "version": "1.1.0",
-    "bap_id": "vistaar-assistant",
-    "bap_uri": "https://assistant.example.in",
-    "bpp_id": "vistaar-provider",
-    "bpp_uri": "https://provider.example.in",
-    "transaction_id": "2f7c1e40-...",
-    "message_id": "9b3d55a1-...",
-    "timestamp": "2026-08-11T09:14:22.517Z",
-    "ttl": "PT10M",
-    "location": { "country": { "code": "IND" }, "city": { "code": "*" } },
-    "tags": { "session_id": "sess-8821", "question_id": "q-4417" }
-  },
-  "message": {
-    "intent": {
-      "category": { "descriptor": { "code": "price-discovery", "name": "price-discovery" } },
-      "item": { "descriptor": { "code": "mandi", "name": "tomato" } }
-    }
-  }
-}
-```
+Two things about it are worth restating, because an idealised version of this example used to appear here and got both wrong:
+
+- The real mandi request sends `item.descriptor` with a **`name` only, no `code`** — and the node's `price-discovery` branch requires `item.descriptor.code === "mandi"`. It is not a well-formed request for the node it is sent to (§6, gap 8).
+- It also carries `fulfillment.end.location` (name + gps) and `from_date` / `to_date` tags, which a minimal example omits — and those are what the node's geospatial step actually consumes.
 
 **`category.descriptor` is the routing key** — it alone decides which internal service handles the request. `item.descriptor` carries the actual question.
 
@@ -777,19 +864,24 @@ Comes back **in the same HTTP reply** — there is no separate callback:
 ```json
 {
   "context": { "action": "on_search", "transaction_id": "2f7c1e40-...", "...": "..." },
-  "message": {
-    "catalog": {
-      "providers": [{
-        "descriptor": { "name": "Agri Acad" },
-        "items": [{
-          "descriptor": { "name": "Tomato — Pune (Khadki)", "short_desc": "Agmarknet mandi prices" },
-          "tags": [{ "descriptor": { "code": "modal_price" }, "value": "2450" }]
+  "responses": [{
+    "context": { "...": "..." },
+    "message": {
+      "catalog": {
+        "providers": [{
+          "descriptor": { "name": "Agri Acad" },
+          "items": [{
+            "descriptor": { "name": "Tomato — Pune (Khadki)", "short_desc": "Agmarknet mandi prices" },
+            "tags": [{ "descriptor": { "code": "modal_price" }, "value": "2450" }]
+          }]
         }]
-      }]
+      }
     }
-  }
+  }]
 }
 ```
+
+Note the **`responses` array** wrapping the catalog. That is not Beckn — a real `on_search` has `message.catalog` at the top level, one callback per provider. Here every result is nested one level deeper inside a non-standard array, because one synchronous reply has to stand in for what would otherwise be several separate callbacks. Any client written against the spec will not parse this.
 
 Note two things. The action says `on_search`, but this is a plain response body, not a callback to `bap_uri` — the shape is Beckn, the mechanics are not. And the provider name is a fixed label, not the organisation that actually published the data.
 
@@ -856,6 +948,7 @@ Also worth noting: Beckn's `/init` and `/confirm` were designed for placing orde
 
 - **Does the "MahaVistaar" cross-network call actually leave BharatVistaar?** That tool sends the *same* category label to the *same* configured address as an ordinary local scheme lookup. Nothing in the request marks it as destined for Maharashtra. If that address is BharatVistaar's own node, the call is answered locally and the cross-network hop never happens; if it's a gateway, it works as intended. **The deciding fact is one configuration value, not code** — check what it's set to. Worth doing: the tool's name asserts something the request doesn't.
 
+- **The running deployment was never inspected.** Everything here is read from source in this repository. Where the doc says a request falls through — mandi and scheme documents, §6 gap 8 — that is what this code does. A deployed node built from a different branch could behave differently. Checking one real mandi response against a live endpoint would settle it in minutes, and it is the single highest-value verification left.
 - **Where do the seed-availability and crop-registry searches go?** Both post to that same address, but neither sends a category label the node's list recognises — one identifies itself by provider id instead. On the node examined here they would fall through to generic search. They may target a newer deployment; that wasn't established.
 
 - **Which node answers any of it.** Every claim about routing in this document describes the one provider node that was read. Whether the configured address actually points at *that* node was never confirmed.
