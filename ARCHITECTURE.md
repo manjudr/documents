@@ -238,8 +238,8 @@ An agriculture department publishes a new advisory article:
 sequenceDiagram
   participant D as Dept / ICAR
   participant N as Provider node
-  participant G as GraphQL
-  participant DB as Content DB
+  participant G as Hasura (GraphQL)
+  participant DB as Content DB (Postgres)
   participant H as Publisher's own server
 
   D->>N: POST /auth/registerUser
@@ -577,7 +577,7 @@ sequenceDiagram
   participant F as Farmer
   participant A as AI assistant
   participant N as Provider node
-  participant DB as Content DB
+  participant DB as Content DB (Postgres)
 
   F->>A: "what is PM-Kisan?"
   Note over A: the model picks the scheme-info tool
