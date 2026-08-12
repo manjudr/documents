@@ -78,8 +78,8 @@ A journey may compose several interaction types. Each step keeps its own status 
 
 ```mermaid
 flowchart LR
-  A["Advise<br/>explain eligibility"] --> B["Act<br/>submit application"]
-  B --> C["Observe<br/>track status"]
+  A["Advise (explain eligibility)"] --> B["Act (submit application)"]
+  B --> C["Observe (track status)"]
 ```
 
 ### Trigger, completion, and channel

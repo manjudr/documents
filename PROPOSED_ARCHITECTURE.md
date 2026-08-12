@@ -28,9 +28,9 @@ The **Network Operator** governs participation and defines common rules, schemas
 
 ```mermaid
 flowchart LR
-  C["Consumer<br/>Farmer"] -->|"expresses a need and gives consent"| P["Provider<br/>One or more capabilities"]
+  C["Consumer (Farmer)"] -->|"expresses a need and gives consent"| P["Provider (one or more capabilities)"]
   P -->|"returns information, observation, or action result"| C
-  P -->|"declares capabilities and compliance"| O["Network Operator<br/>Governance and trust"]
+  P -->|"declares capabilities and compliance"| O["Network Operator (governance and trust)"]
   O -->|"onboards and governs participation"| P
   O -->|"protects participation and sets common rules"| C
 ```
@@ -143,9 +143,9 @@ A use case may compose more than one type. The architecture must preserve the bo
 
 ```mermaid
 flowchart LR
-  U["Benefit application"] --> D["Advise<br/>explain eligibility"]
-  D --> A["Act<br/>submit application"]
-  A --> O["Observe<br/>track status"]
+  U["Benefit application"] --> D["Advise (explain eligibility)"]
+  D --> A["Act (submit application)"]
+  A --> O["Observe (track status)"]
 ```
 
 For example, a benefit application may Advise on eligibility, Act to submit the application, and Observe its status. A pest flow may Observe a crop image and then Advise on treatment. A market flow may Observe prices before the Consumer chooses to Act.
@@ -191,9 +191,9 @@ The three layers are logical ownership boundaries, not mandatory deployment unit
 
 ```mermaid
 flowchart LR
-  E["Experience Layer<br/>(actor-facing experiences)"]
-  N["Network Exchange<br/>(trusted exchange)"]
-  P["Provider Capability Layer<br/>(domain fulfilment)"]
+  E["Experience Layer (actor-facing experiences)"]
+  N["Network Exchange (trusted exchange)"]
+  P["Provider Capability Layer (domain fulfilment)"]
 
   E <-->|"standard interactions"| N
   N <-->|"capability invocation and result"| P
@@ -248,36 +248,36 @@ flowchart TB
   subgraph F["Building-block placement"]
     direction LR
 
-    subgraph C["Farmer channels<br/>(entry points)"]
+    subgraph C["Farmer channels (entry points)"]
       direction TB
       APP["App / Chat"]
       TEL["Telephony / IVR"]
-      MSG["Messaging<br/>(optional)"]
+      MSG["Messaging (optional)"]
       APP ~~~ TEL
       TEL ~~~ MSG
     end
 
     subgraph EL["Experience Layer"]
       direction TB
-      E["Experience<br/>intent • context • presentation • privacy"]
-      EAI["AI extensions<br/>speech • language • persona"]
+      E["Experience (intent • context • presentation • privacy)"]
+      EAI["AI extensions (speech • language • persona)"]
       E ~~~ EAI
     end
 
     subgraph NX["Network Exchange"]
       direction TB
-      R["Registry<br/>participants • capabilities • schemas • trust"]
-      X["Exchange<br/>discovery • validation • routing • correlation • delivery"]
-      NAI["AI assistance<br/>matching • anomaly assistance"]
+      R["Registry (participants • capabilities • schemas • trust)"]
+      X["Exchange (discovery • validation • routing • correlation • delivery)"]
+      NAI["AI assistance (matching • anomaly assistance)"]
       R ~~~ X
       X ~~~ NAI
     end
 
     subgraph PL["Provider Capability Layer"]
       direction TB
-      P["Provider Service<br/>fulfilment • workflow • state • provenance<br/>knowledge • weather • mandi • livestock • schemes • actions"]
-      PA["Provider Adapter<br/>(optional when native)"]
-      PAI["AI extensions<br/>extraction • translation • retrieval • inference"]
+      P["Provider Service (fulfilment • workflow • state • provenance; knowledge • weather • mandi • livestock • schemes • actions)"]
+      PA["Provider Adapter (optional when native)"]
+      PAI["AI extensions (extraction • translation • retrieval • inference)"]
       P ~~~ PA
       PA ~~~ PAI
     end
@@ -289,8 +289,8 @@ flowchart TB
 
   subgraph S["Cross-cutting capabilities"]
     direction LR
-    T["Shared trust and controls<br/>identity • consent • policy • PII protection • keys • compatibility • AI safety"]
-    O["Observability and Operations<br/>health • logs • metrics • traces • audit • dashboards • diagnosis • reconciliation"]
+    T["Shared trust and controls (identity • consent • policy • PII protection • keys • compatibility • AI safety)"]
+    O["Observability and Operations (health • logs • metrics • traces • audit • dashboards • diagnosis • reconciliation)"]
     T ~~~ O
   end
 
@@ -449,7 +449,7 @@ flowchart LR
     RS --> PR
   end
 
-  ID["Identity and Consent Evidence<br/>(authority open)"]
+  ID["Identity and Consent Evidence (authority open)"]
 
   CC -->|"supplies permitted context"| IN
   ID -->|"supplies minimum evidence"| IN
@@ -464,13 +464,13 @@ Knowledge publishing creates an approved, versioned Provider record. Retrieval i
 
 ```mermaid
 flowchart LR
-  S["Source Artifact<br/>publisher authority"]
-  V["Content Version<br/>Knowledge Provider"]
-  A["Approved Content<br/>Knowledge Provider authority"]
-  P["Publication Record<br/>Knowledge Provider authority"]
-  M["Capability or Catalog Metadata<br/>Registry authority"]
-  R["Retrieval Projection<br/>rebuildable"]
-  O["Knowledge Result<br/>with provenance"]
+  S["Source Artifact (publisher authority)"]
+  V["Content Version (Knowledge Provider)"]
+  A["Approved Content (Knowledge Provider authority)"]
+  P["Publication Record (Knowledge Provider authority)"]
+  M["Capability or Catalog Metadata (Registry authority)"]
+  R["Retrieval Projection (rebuildable)"]
+  O["Knowledge Result (with provenance)"]
 
   S --> V
   V --> A
