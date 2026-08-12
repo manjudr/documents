@@ -117,14 +117,12 @@ The three layers are logical ownership boundaries, not mandatory deployment unit
 
 ```mermaid
 flowchart LR
-  E["Experience Layer<br/>actor-facing experiences"]
-  N["Network Exchange<br/>trusted exchange"]
-  P["Provider Capability Layer<br/>domain fulfilment"]
-  R["Registry<br/>network control plane"]
+  E["Experience Layer<br/>(actor-facing experiences)"]
+  N["Network Exchange<br/>(trusted exchange)"]
+  P["Provider Capability Layer<br/>(domain fulfilment)"]
 
   E <-->|"standard interactions"| N
   N <-->|"capability invocation and result"| P
-  R -->|"participants, capabilities,<br/>schemas, endpoints, and trust"| N
 ```
 
 ### Experience Layer
@@ -133,7 +131,7 @@ The Experience Layer serves Consumer, Provider, and Network Operator experiences
 
 **Does:** Converts actor intent and information into standard interactions, presents results, and owns channel or user-interface session state.
 
-**Never does:** Selects an unregistered Provider, routes around the Network Exchange, or executes Provider domain logic.
+**Never does:** Selects an unregistered Provider, bypasses the Network Exchange for a runtime network interaction, or executes Provider domain logic.
 
 **Assumes:** Network and Provider functions expose stable contracts that do not depend on a particular channel or user interface.
 
@@ -165,6 +163,141 @@ A Provider may operate this layer itself or use a managed implementation. Physic
 | Network Exchange | Routing, delivery, and correlation state |
 | Provider Capability Layer | Domain workflow and authoritative domain state |
 
+## Logical components
+
+The layers contain four logical component types. A component is a responsibility boundary, not necessarily a separately deployed service.
+
+```mermaid
+flowchart LR
+  subgraph EL["Experience Layer"]
+    E["Experience Application"]
+  end
+
+  subgraph NX["Network Exchange"]
+    R["Registry"]
+    X["Exchange"]
+  end
+
+  subgraph PL["Provider Capability Layer"]
+    P["Provider Service"]
+  end
+
+  E -->|"runtime interaction"| X
+  R -->|"participants, capabilities,<br/>schemas, endpoints, and trust"| X
+  X -->|"capability invocation"| P
+  P -->|"result, status, or event"| X
+  X -->|"response, callback, or push"| E
+```
+
+| Component | Does | Never does | Assumes |
+|---|---|---|---|
+| Experience Application | Captures an actor's intent and presents progress or results | Implements network routing or Provider domain logic | The responsible Network Exchange, Registry, and Provider Service expose stable contracts |
+| Registry | Governs participants, capabilities, schemas, endpoints, keys, and participation status | Routes runtime interactions or stores Provider domain content | The Network Operator applies explicit onboarding and governance policy |
+| Exchange | Validates, discovers, routes, correlates, and delivers network interactions | Produces Provider results or owns authoritative Provider state | The Registry is authoritative for participation and each Provider implements its declared contracts |
+| Provider Service | Fulfils a declared domain capability and owns its domain workflow and state | Defines ecosystem-wide governance or actor-facing presentation | The Exchange supplies the identity, context, consent, and policy evidence required by the capability |
+
+A Provider Service is a component type. A Knowledge Service, Weather Service, Mandi Service, Livestock Service, Scheme Service, Booking Service, or Credit Service is a concrete Provider Service.
+
+Every component treats the components it calls and the components that call it as stakeholders. Its contract must state the outcome it provides, the inputs and services it requires, observable failure states, compatibility rules, operational evidence, and its never-does boundary. Process liveness alone does not establish component health when the stakeholder outcome is failing.
+
+### Extension boundaries
+
+The architecture keeps extensions with the component whose responsibility they change. It does not promote every extension to a top-level component.
+
+| Extension or concern | Owning component or boundary |
+|---|---|
+| Discovery, routing, callback correlation, retry, and event delivery | Exchange |
+| Document ingestion, approval, retrieval, and Provider-system connectors | Provider Service |
+| Translation, voice, persona, channel, and conversation memory | Experience Application, unless they alter an authoritative Provider result |
+| Participant, capability, schema, endpoint, and key records | Registry |
+| Identity, consent, policy evidence, telemetry, and audit | Contracts observed by every affected component |
+
+## Role composition and deployment
+
+Actor roles define accountability. Components define logical responsibility. An organisation may operate components for more than one role without merging those responsibilities.
+
+| Organisation | Components it may operate |
+|---|---|
+| Network Operator | Registry, Exchange, Operator Experience Applications, and first-party Provider Services |
+| External Provider | Provider Services and Provider Experience Applications |
+| Application or channel partner | Experience Applications |
+
+For example, the Network Operator may operate the Registry and Exchange under the Network Operator role, and a Knowledge Service under the Provider role. The Knowledge Service remains in the Provider Capability Layer. It registers under the same participation and capability contracts as an external Provider Service.
+
+Co-location may optimize calls, but it must preserve contracts, policy checks, state ownership, provenance, audit, and replaceability. Moving a Provider Service into the Network Operator's deployment does not move its content, retrieval indexes, domain decisions, or accountability into the Exchange.
+
+## Runtime and lifecycle paths
+
+Runtime network interactions use the Exchange. The Registry supplies the governed information that the Exchange needs to discover and route an eligible Provider Service.
+
+```mermaid
+sequenceDiagram
+  box Experience Layer
+    participant E as Experience Application
+  end
+  box Network Exchange
+    participant R as Registry
+    participant X as Exchange
+  end
+  box Provider Capability Layer
+    participant P as Provider Service
+  end
+
+  E->>X: 1. send standard interaction
+  X->>R: 2. read eligible participants and capabilities
+  R-->>X: 3. return governed routing information
+  X->>P: 4. invoke declared capability
+  P-->>X: 5. return result, status, or event
+  X-->>E: 6. deliver response, callback, or push
+```
+
+Lifecycle interactions address the component that owns the lifecycle. Provider content does not pass through the Exchange merely because the Network Operator also hosts the Provider Service.
+
+```mermaid
+sequenceDiagram
+  box Experience Layer
+    participant PE as Provider Experience
+    participant OE as Operator Experience
+  end
+  box Network Exchange
+    participant R as Registry
+  end
+  box Provider Capability Layer
+    participant P as Provider Service
+  end
+
+  Note over PE,P: Provider publishing
+  PE->>P: 1. publish or update Provider content
+  P-->>PE: 2. return validation and publication status
+  P->>R: 3. register governed capability or catalog metadata
+  R-->>P: 4. return registration status
+  Note over R,OE: Network governance
+  OE->>R: 5. approve, suspend, or update participation policy
+  R-->>OE: 6. return governance outcome
+```
+
+An Experience Application therefore does not bypass the Exchange for a runtime network interaction. A Provider publishing experience may address its Provider Service directly, and an Operator governance experience may address the Registry directly.
+
+## Use-case validation
+
+The current use-case inventory fits the component model without adding a fifth top-level component. Each new use case must identify its Experience Application, authoritative Provider Service, Registry records, runtime or lifecycle path, state owner, trigger, completion pattern, and required extensions before the architecture accepts it.
+
+| Use-case family | Component path |
+|---|---|
+| Advisory, schemes, frequently asked questions, and recommendations | Experience Application to Exchange to Knowledge or advisory Provider Service |
+| Weather, mandi prices, milk records, benefits, and application status | Experience Application to Exchange to the relevant Provider Service |
+| Booking, applications, grievances, profile updates, and escalation | Experience Application to Exchange to the action-owning Provider Service |
+| Alerts, reminders, and farm-calendar notifications | Provider Service to Exchange to Experience Application |
+| Knowledge ingestion and repository management | Provider Experience Application to Knowledge Service |
+| Knowledge or content synchronization | Provider Service publishing flow, with governed capability or catalog metadata in the Registry |
+| Provider, capability, and schema onboarding | Provider or Operator Experience Application to Registry |
+| Voice, multilingual, telephony, local terminology, and language switching | Experience Application extensions; the Provider result remains authoritative |
+| Personalization, conversation memory, and crop profiles | Experience Application owns conversation context; a Provider Service owns durable farmer or crop profile state and the resulting domain decision |
+| Feedback capture and analytics | Experience Application to Exchange to feedback-owning Provider Service; Operator Experience Application reads the resulting analytics |
+| Operational dashboards and API health | Operator Experience Application reading operational evidence from the Registry, Exchange, and Provider Services |
+
+Operational dashboards, health monitoring, and feedback analytics require each component to expose consistent operational evidence. This is a cross-component supportability contract, not a fifth top-level business component. If network-wide aggregation later requires independent ownership or scaling, the architecture may separate it without changing the four component types.
+
 ## Locked decisions
 
 - OpenAgriNet has three ecosystem actor roles: Consumer, Provider, and Network Operator.
@@ -179,6 +312,10 @@ A Provider may operate this layer itself or use a managed implementation. Physic
 - OpenAgriNet has three logical ownership layers: Experience Layer, Network Exchange, and Provider Capability Layer.
 - Experience Layer serves actor-facing experiences for Consumers, Providers, and the Network Operator.
 - The Registry is the control plane for the Network Exchange.
+- The four logical component types are Experience Application, Registry, Exchange, and Provider Service.
+- The Registry is a component within the Network Exchange layer, not a fourth layer.
+- Runtime network interactions use the Exchange; Provider publishing and Network Operator governance address the component that owns their lifecycle.
+- The Network Operator may operate a first-party Provider Service, but it remains logically and contractually separate from the Registry and Exchange.
 - A Provider protocol adapter is internal to the Provider Capability Layer, even when offered as a managed implementation.
 
 ## Open items
