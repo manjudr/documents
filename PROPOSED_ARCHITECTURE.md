@@ -2,6 +2,8 @@
 
 Status: Proposed to be reviewed with DC
 
+Companion guide: [Understanding OpenAgriNet architecture](UNDERSTANDING_ARCHITECTURE.md)
+
 ## The idea
 
 OpenAgriNet is an ecosystem in which a Consumer seeks an agricultural outcome, a Provider supplies a capability that can satisfy it, and a Network Operator establishes the rules under which they participate. These are the three actor roles used to derive the architecture.
@@ -35,13 +37,13 @@ flowchart LR
 
 The roles describe responsibility, not organisation boundaries. One organisation may play more than one role, but it must act under the contract and permissions of one role in each interaction.
 
-## Requirements and design forces
+## What the architecture must support
 
 These are the architecture-significant requirements derived from the current use-case inventory. They define what the architecture must make possible or protect. They do not replace the detailed use cases or prescribe a deployment technology.
 
 Every requirement needs observable validation. A later component, interface, or specification is justified only when it satisfies one or more of these requirements.
 
-### Design forces
+### Design tensions
 
 | Force                                        | Tension the architecture must resolve                                                                                                          |
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -654,7 +656,7 @@ The remaining architecture work will be completed in the following order. Later 
 
 | Order | Work item | Current status | Completion evidence |
 |---|---|---|---|
-| 1 | Requirements and design forces | Drafted, pending DC review | Prioritized functional, trust, extensibility, operational, and architecture constraints, traced to the use cases |
+| 1 | What the architecture must support | Drafted, pending DC review | Prioritized functional, trust, extensibility, operational, and architecture constraints, traced to the use cases |
 | 2 | Information model and authority | Proposed for review | Core concepts, relationships, identifiers, lifecycle, authoritative owner, projections, privacy boundaries, and extension rules |
 | 3 | Representative end-to-end flows | Partial draft | Success and failure diagrams for immediate response, composite interaction, callback, notification, onboarding, knowledge publishing and retrieval, governance, and reconciliation |
 | 4 | Building-block deep-dives | Landscape and responsibility outline drafted | Purpose, does, never does, assumptions, authoritative state, provided and required contracts, extension points, failure evidence, and supporting use cases for every building block |

@@ -12,6 +12,10 @@ Internal architecture documentation for the OpenAgriNet platform.
   (BharatVistaar, MahaVistaar, Amul): module map, request flow, catalog publish/discover,
   telemetry, auth, and the gap list for re-architecting onto the current Beckn protocol.
 
+- **[UNDERSTANDING_ARCHITECTURE.md](UNDERSTANDING_ARCHITECTURE.md)** explains how the actor model and representative use cases lead to the proposed interaction model, layers, and Provider capability model.
+
+- **[PROPOSED_ARCHITECTURE.md](PROPOSED_ARCHITECTURE.md)** is the normative proposed architecture for DC review. It contains the requirements, responsibilities, boundaries, information model, and pending work.
+
 ## Viewing the diagrams
 
 Both docs use [Mermaid](https://mermaid.js.org/) diagrams in ` ```mermaid ` fences.
