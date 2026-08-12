@@ -80,9 +80,9 @@ What is known about it:
 | What it holds | documents — searches filter on `type:document`, hybrid vector + keyword |
 | Where it lives | a **hardcoded IP address in the node's source**, over plain HTTP — not configuration, not TLS |
 | Is it the knowledge catalog? | **No.** Different index, different name, different address. The assistant's own document store is configured separately. |
-| Who writes to it | **unknown.** Its name appears exactly once in all the code examined — the read. There is no write path anywhere in these repositories, no publish route, and no approval step. |
+| Who writes to it | **almost certainly the document pipeline — but nothing proves it.** The pipeline has a real write path, yet its target is set by environment variables, and its shipped defaults point somewhere else entirely. The generic index's name appears exactly once in the whole project: the node's read. |
 
-> Two document stores, not one. The assistant searches its own; the node searches this one. **Nothing in this document explains how content gets into the node's.** That is the largest single unknown here — it answers real questions today, including mandi prices, and nobody in these repos puts anything into it.
+> Two document stores, not one. The assistant searches its own; the node searches this one. **Which one the pipeline actually fills is a deployment setting, not a decision recorded anywhere in the code.** Reading the running pipeline's configuration would settle it in minutes — see §10.
 
 **A note on scope.** These three cover every answer to a *general* question.**A note on scope.** These three cover every answer to a *general* question. They do not cover questions about a specific farmer — "has my PM-Kisan payment arrived?" — which are answered by a fourth path: a live, OTP-authenticated query against a government system, holding no data of its own. That path is §9.
 
@@ -172,11 +172,13 @@ These are the same three sources introduced in §2, now seen from the publishing
 
 1. **Internal team only.** External organisations cannot use this path.
 2. **What goes in:** long-form government documents — scheme guideline PDFs, circulars, operational manuals. Too dense for a farmer, but the assistant needs to quote from them.
-3. **No API exists.** A human starts a pipeline that lives in **a separate repository** (`OpenAgriNet/docs-pipeline`). There is no way to publish a reviewed document programmatically.
+3. **There is a proper API** — a document pipeline with its own service and review interface, sitting alongside the other BharatVistaar components. Documents are submitted by upload or by reference, singly or in batches, and everything after that is driven through the same API.
 4. **The pipeline splits** the document into small passages and converts each into a numeric representation of its *meaning* — this is what lets the assistant find "the bit about eligibility" without anyone tagging it.
-5. **A reviewer signs off.**
-6. **A superadmin promotes it** to production. Two humans, in sequence.
+5. **Approval happens in stages, not once.** Reading the text, translating it, splitting it into passages and loading it are each approved separately, with the document moving through a ten-stage lifecycle. Work can be retried, reset or re-run per stage rather than restarted.
+6. **Production is a second, separate promotion.** A document approved for use still has to be requested for production and then approved by a superadmin — a distinct target with its own configuration.
 7. **It lands in a vector database**, plus a separately-cached list of available schemes — that cache is what makes a new scheme searchable **without redeploying the assistant**.
+
+> **This is the most carefully built publish path in the system**, and the only one with staged human review, per-action permissions, rate limiting and an audit trail of who changed what. It is worth contrasting with §3's content API, where a single insert goes straight to live.
 
 > Note the inversion: content from **strangers** goes live on insert; content from **staff** needs two approvals.
 
@@ -194,7 +196,7 @@ These are the same three sources introduced in §2, now seen from the publishing
 
 ### Publish — the high-level architecture
 
-One picture covering all three paths — and the point of it is that **they never meet.** Each ends in a different store, with a different approval model, and only one of them has an API.
+One picture covering all three paths — and the point of it is that **they never meet.** Each ends in a different store, with a different approval model, and the one with the most review is not the one carrying farmer-facing content.
 
 ```mermaid
 graph LR
@@ -208,7 +210,7 @@ graph LR
   API -->|"thumbnails only"| S3[("object store")]
   DB -.->|"converted ONLY at search time,<br/>by per-category code"| B["Beckn catalog<br/>in the response"]
 
-  T["KNOWLEDGE CATALOG<br/>content team<br/>INTERNAL"] -->|"NO API —<br/>a real file, by hand"| P["docs-pipeline —<br/>SEPARATE REPO"]
+  T["KNOWLEDGE CATALOG<br/>content team<br/>INTERNAL"] -->|"its own API —<br/>staged review"| P["the document<br/>pipeline"]
   P --> R{"reviewer"} --> SU{"superadmin"} --> V[("vector DB + scheme-list cache")]
   V -.->|"read DIRECTLY by the assistant —<br/>the node never touches it"| AI["AI assistant"]
 
@@ -219,7 +221,7 @@ graph LR
 **The architecture in points:**
 
 1. **Publishing and searching happen in the same app.** One program, one container, one database. There is no separate publishing service.
-2. **Only the content catalog has an API.** The knowledge catalog is a human starting a pipeline by hand. Live data has nothing at all.
+2. **Two of the three have an API, and they are very different in character.** The content catalog takes a single insert straight to live. The knowledge catalog has staged review, per-action permissions and an audit trail. Live data has nothing at all.
 3. **Only publishing needs a login.** Every publish route checks a token. Every search route checks nothing.
 4. **The approval happens once, to the organisation — not to the content.** After that, everything that account uploads is live the moment it is saved.
 5. **Outsiders are checked less than staff.** Content from departments gets no review. Documents from the internal team need two people to sign off.
@@ -261,17 +263,17 @@ Put side by side with the one above, the contrast is the whole point: **no login
 ```mermaid
 sequenceDiagram
   participant T as Content team member
-  participant P as docs-pipeline<br/>(separate repo)
+  participant P as the document pipeline
   participant R as Reviewer
   participant S as Superadmin
   participant V as Vector DB
 
   Note over T: starts with a real file —<br/>a scheme guideline PDF
-  T->>P: runs the pipeline by hand<br/>NO API, NO endpoint
+  T->>P: uploads the document<br/>through the pipeline's API
   Note over P: splits the document into passages,<br/>turns each into a numeric form<br/>of its MEANING
   P->>R: staged for review
-  R->>S: approved
-  Note over S: promotes to production
+  R->>S: approved in stages —<br/>text, translation, passages
+  Note over S: a SEPARATE approval<br/>promotes it to production
   S->>V: passages land here,<br/>plus the scheme-list cache
   Note over V: the assistant reads this DIRECTLY.<br/>The provider node never touches it.
 ```
@@ -280,9 +282,9 @@ sequenceDiagram
 
 | | Content catalog | Knowledge catalog |
 |---|---|---|
-| How it is sent | an HTTP request | a person running a pipeline |
+| How it is sent | an HTTP request, live on insert | an HTTP request, then staged review |
 | Who can do it | any approved outside org | internal team only |
-| Checks on the item | **none** — live on insert | **two people**, in sequence |
+| Checks on the item | **none** — live on insert | **staged approval**, plus a separate promotion to production |
 | What lands | a flat row with a link | passages indexed by meaning |
 | Who reads it later | the provider node | the assistant, directly |
 
@@ -714,7 +716,7 @@ The reason for this document. Restated plainly:
 
 9. **The publish API cannot write the fields that search filters on.** Verified in code. Scheme search narrows the content table on two columns, `usecase` and `scheme_id` — and **no publish route sets either one**. Neither appears in any insert or update. The same is true of the six columns holding the actual scheme text. So anything published through the documented API arrives with those columns empty and is invisible to the search that was meant to find it. The rows that *do* answer scheme questions were loaded some other way, outside every endpoint in §7. Two separate publishing stories, and only one of them has an API.
 
-10. **The node's document index is unowned, undocumented and hardcoded.** It backs the `knowledge-advisory` category *and* catches everything unrecognised. Its address is an **IP literal in the node's source, over plain HTTP** — not configuration, not TLS. It is a second document store, separate from the one the assistant searches. **No write path to it exists anywhere in these repositories**, so how content reaches it is unknown. Three questions for the redesign: who owns it, how is it published to, and should an unroutable request be answered at all rather than refused?
+10. **The node's document index is hardcoded, and which pipeline fills it is unrecorded.** It backs the `knowledge-advisory` category *and* catches everything unrecognised. Its address is an **IP literal in the node's source, over plain HTTP** — not configuration, not TLS. It is a second document store, separate from the one the assistant searches. A document pipeline exists and can write to a store like it, but **its target is chosen by environment variable and its shipped defaults point elsewhere**, so the connection is inferred, not documented. Three questions for the redesign: who owns it, is it the same content as the assistant's store, and should an unroutable request be answered at all rather than refused?
 
 11. **Decide what belongs on the network.** Today the document/video search deliberately bypasses Beckn while structured content goes through it. That split happened by accident rather than design. Choose it consciously this time.
 
@@ -845,7 +847,7 @@ It goes live on insertion. No review step follows.
 
 Note the two things this example makes concrete: the shape is **flat, not Beckn**, and `url` is **a pointer, not an upload** — the PDF stays on the publisher's server.
 
-**Don't confuse this with the scheme PDFs the assistant quotes from.** Those go through the knowledge catalog: real uploads, reviewed by two people, indexed by meaning, never touching Beckn. Same word "scheme", two unrelated pipelines.
+**Don't confuse this with the scheme PDFs the assistant quotes from.** Those go through the knowledge catalog: real uploads, reviewed stage by stage, indexed by meaning, never touching Beckn. Same word "scheme", two unrelated pipelines.
 
 ### Publishing in bulk
 
