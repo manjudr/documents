@@ -10,35 +10,17 @@ The architecture will not use a network-of-networks model as its starting point.
 
 ## Who does what
 
-### Consumer
+The **Consumer** is the farmer who seeks information, an observation, or an action from the ecosystem.
 
-The Consumer is the farmer who seeks information, an observation, or an action from the ecosystem.
+The **Provider** supplies one or more agricultural capabilities, such as knowledge, livestock, mandi, weather, schemes, or grievances.
 
-**Does:** Expresses a need, supplies the context and consent needed to fulfil it, and receives the result.
+The **Network Operator** governs participation and defines common rules, schemas, trust requirements, and onboarding processes.
 
-**Never does:** Manages provider registration, network governance, schemas, or ecosystem policy.
-
-**Assumes:** The ecosystem protects the farmer's identity and context, makes available capabilities understandable, and returns results with enough provenance and status to be trusted.
-
-### Provider
-
-The Provider supplies one or more agricultural capabilities. A knowledge organisation, livestock service, mandi service, weather service, scheme service, or grievance service is a Provider with a different declared capability.
-
-**Does:** Declares its capabilities, accepts compatible requests, supplies information or performs actions, and remains accountable for its results.
-
-**Never does:** Sets rules for the whole ecosystem or gains access to a Consumer beyond the context and consent required for an interaction.
-
-**Assumes:** The Network Operator publishes stable participation rules, schemas, and trust requirements, and the ecosystem can route eligible Consumer needs to the Provider's declared capabilities.
-
-### Network Operator
-
-The Network Operator governs participation in OpenAgriNet. It defines the common rules, schemas, trust requirements, and onboarding processes for Consumers and Providers.
-
-**Does:** Establishes governance, approves or suspends participation, manages common schemas and policies, and provides the shared mechanisms needed for trusted interaction.
-
-**Never does:** Becomes the source of provider information, performs a Provider's domain service, or owns a Consumer's agricultural decision.
-
-**Assumes:** Consumers and Providers comply with the rules for their role, and governance decisions can be enforced and audited through shared platform mechanisms.
+| Actor | Does | Never does | Assumes |
+|---|---|---|---|
+| Consumer | Expresses a need, supplies the context and consent needed to fulfil it, and receives the result | Manages Provider registration, network governance, schemas, or ecosystem policy | The ecosystem protects the farmer's identity and context, makes available capabilities understandable, and returns results with enough provenance and status to be trusted |
+| Provider | Declares its capabilities, accepts compatible requests, supplies information or performs actions, and remains accountable for its results | Sets rules for the whole ecosystem or accesses a Consumer beyond the context and consent required for an interaction | The Network Operator publishes stable participation rules, schemas, and trust requirements, and the ecosystem routes eligible Consumer needs to declared capabilities |
+| Network Operator | Establishes governance, approves or suspends participation, manages common schemas and policies, and provides the shared mechanisms needed for trusted interaction | Becomes the source of Provider information, performs a Provider's domain service, or owns a Consumer's agricultural decision | Consumers and Providers comply with the rules for their role, and governance decisions can be enforced and audited through shared platform mechanisms |
 
 ## Actor relationships
 
@@ -52,6 +34,96 @@ flowchart LR
 ```
 
 The roles describe responsibility, not organisation boundaries. One organisation may play more than one role, but it must act under the contract and permissions of one role in each interaction.
+
+## Requirements and design forces
+
+These are the architecture-significant requirements derived from the current use-case inventory. They define what the architecture must make possible or protect. They do not replace the detailed use cases or prescribe a deployment technology.
+
+Every requirement needs observable validation. A later component, interface, or specification is justified only when it satisfies one or more of these requirements.
+
+### Design forces
+
+| Force                                        | Tension the architecture must resolve                                                                                                          |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ecosystem diversity and a simple core        | Providers and agricultural domains vary, but each variation must not add another top-level architecture component                              |
+| Shared governance and Provider authority     | The Network Operator must enforce participation rules without becoming the authority for Provider content, workflow, or results                |
+| Role composition and role independence       | One organisation may operate network and Provider functions, while external Providers must be able to participate through the same contracts   |
+| Common contracts and domain variation        | Interactions need stable shared semantics while domain information evolves through explicit profiles and extensions                            |
+| Channel inclusion and outcome integrity      | Voice, text, web, mobile, and messaging may represent an interaction differently without changing its domain meaning                           |
+| Flexible completion and reliable obligation  | Immediate, streaming, callback, poll, and push delivery must remain composable without losing correlation, status, or accountability           |
+| Operational visibility and data minimization | Operators need enough evidence to diagnose stakeholder outcomes without copying Consumer identity, consent, or Provider content into telemetry |
+
+### Outcome requirements
+
+| ID     | Requirement                                                                                                                                                       | Validation evidence                                                                                                             |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| OUT-01 | A Consumer must be able to use an eligible Provider capability through any supported Experience Application without the Provider implementing that channel        | Exercise the same advisory through text and voice while keeping the Provider capability contract unchanged                      |
+| OUT-02 | A Provider must be able to declare, publish, update, fulfil, and withdraw a capability while remaining authoritative for its domain content, workflow, and result | Publish and retrieve knowledge, then repeat the lifecycle for a non-knowledge Provider capability                               |
+| OUT-03 | A Network Operator must be able to onboard, approve, suspend, and audit participants, capabilities, schemas, endpoints, keys, and participation status            | Complete the Provider onboarding lifecycle and prove that suspension prevents new eligible routing                              |
+| OUT-04 | A first-party Provider Service operated by the Network Operator must participate through the same role contract as an external Provider Service                   | Replace or complement a first-party Knowledge Service with an external Knowledge Service without changing the Exchange contract |
+
+### Interaction requirements
+
+| ID | Requirement | Validation evidence |
+|---|---|---|
+| INT-01 | Advise, Observe, and Act must remain independently invocable and composable in one Consumer journey | Exercise benefit discovery, application, and status tracking as Advise, Act, and Observe steps |
+| INT-02 | Trigger mode, completion pattern, channel, and representation must vary independently of the domain interaction type | Deliver the same weather observation by request and by scheduled push through different channels |
+| INT-03 | Immediate and asynchronous interactions must preserve a stable interaction identity, status, and accountable Provider across response, callback, poll, and push | Trace a long-running application from submission to callback and later status observation |
+| INT-04 | Acceptance of a long-running Act must create a durable obligation and must not be reported as completion | Interrupt processing after acceptance and prove that the action resumes, reconciles, or reaches an explicit terminal failure |
+| INT-05 | Event-driven and scheduled notifications must respect Consumer permission, preference, and delivery status | Generate an alert, suppress it for a Consumer without permission, and expose its delivery result for a permitted Consumer |
+
+### Participation and governance requirements
+
+| ID | Requirement | Validation evidence |
+|---|---|---|
+| GOV-01 | One logical Registry must be authoritative for governed participant, role, capability, schema, endpoint, key, and participation-status records | Resolve each governed record for an eligible Provider from the Registry and identify its change history |
+| GOV-02 | The Exchange must use current Registry decisions when discovering and routing a Provider | Change a Provider's eligibility and prove that subsequent discovery and routing apply the new decision |
+| GOV-03 | Provider admission must be declarative and verifiable without rebuilding the Exchange | Add a conforming Provider through registration, policy approval, and contract validation only |
+| GOV-04 | Governance decisions must be attributable, auditable, reversible where policy permits, and enforceable at runtime | Reconstruct an approval and suspension from audit evidence and verify their runtime effect |
+
+### Information and authority requirements
+
+| ID | Requirement | Validation evidence |
+|---|---|---|
+| INF-01 | Every mutable record must have one accountable authoritative owner; other stores must be declared copies, caches, or rebuildable projections | Map each state read or changed by the representative flows to its authority and reconciliation direction |
+| INF-02 | Experience Applications own experience state, the Exchange owns routing and delivery state, and Provider Services own domain workflow and authoritative domain state | Trace a composite interaction and prove that no component writes state owned by another component |
+| INF-03 | A Knowledge Service must own source artifacts, approved content, publication state, and retrieval projections; the Registry stores only governed capability or catalog metadata | Publish, update, withdraw, and rebuild a knowledge projection without treating the Exchange or Registry as the content authority |
+| INF-04 | Components must disclose only the Consumer identity, context, and consent evidence required for the interaction; the Registry must not accumulate Consumer data for convenience | Inspect Registry records and an interaction trace for unnecessary Consumer data |
+| INF-05 | Provider results must carry sufficient provenance, status, and receipt information for a Consumer, Operator, or dependent component to determine their source and authority | Trace an advisory result and a completed action back to the accountable Provider and authoritative evidence |
+
+### Extensibility requirements
+
+| ID     | Requirement                                                                                                                                        | Validation evidence                                                                                               |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| EXT-01 | A new Provider or capability must be added through declared contracts, registration, policy, and conformance without changing unrelated components | Onboard a new domain Provider without changing the Experience Application or Exchange implementation              |
+| EXT-02 | Common schemas must support versioned domain profiles and explicit compatibility rules without forking the shared interaction semantics            | Introduce a backward-compatible domain attribute and reject an incompatible version without an explicit migration |
+| EXT-03 | A new channel, language, representation, or persona must extend the Experience Application unless it changes an authoritative Provider result      | Add a new language or channel without changing Provider Service domain logic                                      |
+| EXT-04 | Provider-native connectors and transformation adapters must remain replaceable inside the Provider Capability Layer                                | Replace one Provider adapter while keeping the Exchange-facing capability contract unchanged                      |
+| EXT-05 | No extension may bypass identity, consent, policy, audit, or conformance obligations                                                               | Run the same policy and conformance checks against a core implementation and an extension                         |
+
+### Operational and supportability requirements
+
+Every component treats the components it calls and the components that call it as stakeholders. Component health therefore measures the promised stakeholder outcome, not process liveness alone.
+
+| ID     | Requirement                                                                                                                                             | Validation evidence                                                                                              |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| OPS-01 | Every network interaction must carry a correlation identity across the Experience Application, Exchange, Registry lookup, and Provider Service          | Reconstruct one interaction across all participating components from operational evidence                        |
+| OPS-02 | Every component must expose technical health and the health of the stakeholder outcome it promises                                                      | Keep a component process available while making its dependency fail, and verify that outcome health degrades     |
+| OPS-03 | A failed interaction must identify the failing boundary, failure category, retryability, current status, and accountable component                      | Inject validation, routing, Provider, callback, and delivery failures and inspect the reported evidence          |
+| OPS-04 | The Exchange must expose discovery, routing, correlation, timeout, retry, callback, and delivery evidence                                               | Diagnose an immediate response, a delayed callback, and a failed push from Exchange evidence                     |
+| OPS-05 | A Provider Service must expose capability success, domain failure, provenance, authoritative status, and reconciliation evidence                        | Compare a Provider-reported result and status with its authoritative domain system                               |
+| OPS-06 | The Registry must expose auditable evidence for onboarding, approval, suspension, capability, schema, endpoint, and key changes                         | Reconstruct a Provider's participation history from Registry evidence                                            |
+| OPS-07 | Logs, metrics, traces, dashboards, and audit records must not disclose Consumer data or Provider content beyond authorized operational need             | Inspect operational evidence for prohibited identity, consent, conversation, and content fields                  |
+| OPS-08 | Operator Experience Applications must be able to present network and component health using evidence from the Registry, Exchange, and Provider Services | Demonstrate API health, Provider degradation, interaction failures, and delivery failures in an operational view |
+
+### Constraints and non-goals
+
+- Consumer, Provider, and Network Operator are the three ecosystem roles; agricultural domains remain Provider capabilities.
+- Experience Layer, Network Exchange, and Provider Capability Layer are logical ownership boundaries, not prescribed deployment units.
+- Experience Application, Registry, Exchange, and Provider Service are the four logical component types. Supporting capabilities do not become peer components without an independently justified responsibility boundary.
+- The Registry is a component inside Network Exchange. It is not a fourth layer, a Provider-content store, or a general Consumer identity store.
+- A network-of-networks model is outside the starting scope. The architecture may revisit federation only when a validated requirement cannot be met by the accepted model.
+- The architecture remains implementation-neutral until a later deployment or technology decision is supported by requirements and measurable tradeoffs.
 
 ## Interaction model
 
@@ -163,54 +235,135 @@ A Provider may operate this layer itself or use a managed implementation. Physic
 | Network Exchange | Routing, delivery, and correlation state |
 | Provider Capability Layer | Domain workflow and authoritative domain state |
 
-## Logical components
+## Component architecture
 
-The layers contain four logical component types. A component is a responsibility boundary, not necessarily a separately deployed service.
+The architecture has four stable building blocks: Experience, Registry, Exchange, and Provider Service. Runtime features, adapters, AI tools, trust controls, and operational tools remain capabilities or extensions of these blocks unless an independently justified boundary requires a separate component.
+
+### Building-block landscape
 
 ```mermaid
-flowchart LR
-  subgraph EL["Experience Layer"]
-    E["Experience Application"]
+flowchart TB
+  subgraph F["Building-block placement"]
+    direction LR
+
+    subgraph C["Farmer channels<br/>(entry points)"]
+      direction TB
+      APP["App / Chat"]
+      TEL["Telephony / IVR"]
+      MSG["Messaging<br/>(optional)"]
+      APP ~~~ TEL
+      TEL ~~~ MSG
+    end
+
+    subgraph EL["Experience Layer"]
+      direction TB
+      E["Experience<br/>intent • context • presentation • privacy"]
+      EAI["AI extensions<br/>speech • language • persona"]
+      E ~~~ EAI
+    end
+
+    subgraph NX["Network Exchange"]
+      direction TB
+      R["Registry<br/>participants • capabilities • schemas • trust"]
+      X["Exchange<br/>discovery • validation • routing • correlation • delivery"]
+      NAI["AI assistance<br/>matching • anomaly assistance"]
+      R ~~~ X
+      X ~~~ NAI
+    end
+
+    subgraph PL["Provider Capability Layer"]
+      direction TB
+      P["Provider Service<br/>fulfilment • workflow • state • provenance<br/>knowledge • weather • mandi • livestock • schemes • actions"]
+      PA["Provider Adapter<br/>(optional when native)"]
+      PAI["AI extensions<br/>extraction • translation • retrieval • inference"]
+      P ~~~ PA
+      PA ~~~ PAI
+    end
+
+    APP ~~~ E
+    E ~~~ R
+    R ~~~ P
   end
 
-  subgraph NX["Network Exchange"]
-    R["Registry"]
-    X["Exchange"]
+  subgraph S["Cross-cutting capabilities"]
+    direction LR
+    T["Shared trust and controls<br/>identity • consent • policy • PII protection • keys • compatibility • AI safety"]
+    O["Observability and Operations<br/>health • logs • metrics • traces • audit • dashboards • diagnosis • reconciliation"]
+    T ~~~ O
   end
 
-  subgraph PL["Provider Capability Layer"]
-    P["Provider Service"]
-  end
+  classDef deterministic fill:#dbeafe,stroke:#1d4ed8,color:#1e1e1e,stroke-width:2px
+  classDef ai fill:#ede9fe,stroke:#7c3aed,color:#1e1e1e,stroke-width:2px
+  classDef observability fill:#dcfce7,stroke:#15803d,color:#1e1e1e,stroke-width:2px
+  classDef optional stroke-dasharray:6 4
 
-  E -->|"runtime interaction"| X
-  R -->|"participants, capabilities,<br/>schemas, endpoints, and trust"| X
-  X -->|"capability invocation"| P
-  P -->|"result, status, or event"| X
-  X -->|"response, callback, or push"| E
+  class APP,TEL,MSG,E,R,X,P,PA,T deterministic
+  class EAI,NAI,PAI ai
+  class O observability
+  class MSG,EAI,NAI,PA,PAI optional
 ```
 
-| Component | Does | Never does | Assumes |
+The invisible Mermaid links (`~~~`) control placement only. They do not represent communication. Blue boxes are deterministic, purple boxes are AI-based, green boxes are operational, and dashed boxes are optional extensions. Conditional capabilities use solid borders because they become mandatory when their declared condition applies.
+
+A Provider that implements the standard contract natively does not need a Provider Adapter. A non-conformant Provider uses an adapter that it operates itself, obtains as a reference implementation, or consumes as a Network Operator-managed implementation. In every option, the adapter remains logically inside the Provider Capability Layer.
+
+Every building block emits evidence about the responsibility it owns. Network operational capabilities collect and correlate that evidence across the ecosystem. Telemetry and audit stores do not become authoritative for Registry governance state or Provider domain state.
+
+### Capability placement
+
+Capabilities with similar technical names remain separate when they change different outcomes or authorities.
+
+| Capability | Placement |
+|---|---|
+| Speech recognition and synthesis | Experience |
+| Language detection and response rendering | Experience |
+| Conversation-context enrichment | Experience |
+| Channel-input PII minimization and masking | Experience, with protection repeated at every later boundary that handles sensitive data |
+| Provider-native to standard protocol mapping | Provider Adapter |
+| PDF extraction, OCR, source-content translation, classification, and chunking | Knowledge Provider Service publishing capability |
+| Retrieval, reranking, and answer generation | Knowledge Provider Service retrieval capability |
+| Domain recommendation, inference, or decision support | Provider Service |
+| Capability-matching assistance | Exchange optional extension, advisory only; governed policy remains authoritative |
+| Network anomaly detection | Observability and Operations |
+
+### Capability optionality
+
+| Classification | Meaning |
+|---|---|
+| Core | Required for every conformant implementation of the building block |
+| Conditional | Required when a declared use case, channel, format, data class, or completion pattern needs it |
+| Optional extension | Adds functionality without changing or weakening the base contract |
+| Managed implementation | Another organisation operates it while the logical owner retains responsibility |
+| Reference implementation | An example implementation with no privileged architectural status |
+
+A capability receives an independent component boundary only when it has a meaningful independent contract, state, failure mode, deployment lifecycle, security boundary, scaling requirement, or operational owner. Otherwise it remains an internal feature, tool, skill, adapter, or module within its owning building block.
+
+### Building-block responsibilities
+
+The layers contain four logical building blocks. A building block is a responsibility boundary, not necessarily a separately deployed service.
+
+| Building block | Does | Never does | Assumes |
 |---|---|---|---|
-| Experience Application | Captures an actor's intent and presents progress or results | Implements network routing or Provider domain logic | The responsible Network Exchange, Registry, and Provider Service expose stable contracts |
+| Experience | Captures an actor's intent and presents progress or results | Implements network routing or Provider domain logic | The responsible Network Exchange, Registry, and Provider Service expose stable contracts |
 | Registry | Governs participants, capabilities, schemas, endpoints, keys, and participation status | Routes runtime interactions or stores Provider domain content | The Network Operator applies explicit onboarding and governance policy |
 | Exchange | Validates, discovers, routes, correlates, and delivers network interactions | Produces Provider results or owns authoritative Provider state | The Registry is authoritative for participation and each Provider implements its declared contracts |
 | Provider Service | Fulfils a declared domain capability and owns its domain workflow and state | Defines ecosystem-wide governance or actor-facing presentation | The Exchange supplies the identity, context, consent, and policy evidence required by the capability |
 
-A Provider Service is a component type. A Knowledge Service, Weather Service, Mandi Service, Livestock Service, Scheme Service, Booking Service, or Credit Service is a concrete Provider Service.
+A Knowledge Service, Weather Service, Mandi Service, Livestock Service, Scheme Service, Booking Service, or Credit Service is a concrete Provider Service.
 
-Every component treats the components it calls and the components that call it as stakeholders. Its contract must state the outcome it provides, the inputs and services it requires, observable failure states, compatibility rules, operational evidence, and its never-does boundary. Process liveness alone does not establish component health when the stakeholder outcome is failing.
+Every building block treats its dependencies and consumers as stakeholders. Its contract must state the outcome it provides, the inputs and services it requires, observable failure states, compatibility rules, operational evidence, and its never-does boundary. Process liveness alone does not establish health when the stakeholder outcome is failing.
 
 ### Extension boundaries
 
-The architecture keeps extensions with the component whose responsibility they change. It does not promote every extension to a top-level component.
+The architecture keeps extensions with the building block whose responsibility they change. It does not promote every extension to a top-level component.
 
 | Extension or concern | Owning component or boundary |
 |---|---|
 | Discovery, routing, callback correlation, retry, and event delivery | Exchange |
 | Document ingestion, approval, retrieval, and Provider-system connectors | Provider Service |
-| Translation, voice, persona, channel, and conversation memory | Experience Application, unless they alter an authoritative Provider result |
+| Translation, voice, persona, channel, and conversation memory | Experience, unless they alter an authoritative Provider result |
 | Participant, capability, schema, endpoint, and key records | Registry |
-| Identity, consent, policy evidence, telemetry, and audit | Contracts observed by every affected component |
+| Identity, consent, policy evidence, telemetry, and audit | Contracts observed by every affected building block |
 
 ## Role composition and deployment
 
