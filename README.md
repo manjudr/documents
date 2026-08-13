@@ -16,6 +16,8 @@ Internal architecture documentation for the OpenAgriNet platform.
 
 - **[PROPOSED_ARCHITECTURE.md](PROPOSED_ARCHITECTURE.md)** is the normative proposed architecture for DC review. It contains the requirements, responsibilities, boundaries, information model, and pending work.
 
+- **[HIGH_LEVEL_ARCHITECTURE.md](HIGH_LEVEL_ARCHITECTURE.md)** is the compact five-view summary of the proposed architecture: actors, design problems, principles, domain architecture, and runtime interaction.
+
 ## Viewing the diagrams
 
 Both docs use [Mermaid](https://mermaid.js.org/) diagrams in ` ```mermaid ` fences.
