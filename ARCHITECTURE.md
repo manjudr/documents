@@ -56,7 +56,11 @@ Every statement in this document is a proposal until reviewed by DC. Product nam
 
 OpenAgriNet is a digital public good, or DPG. It provides reusable software, standard interfaces, schemas, participation rules, conformance tools, and operational evidence contracts. The DPG is not a runtime actor and does not itself own a person account, Provider record, or operational deployment.
 
-A participating deployment integrates the OpenAgriNet DPG into its application, authentication, customisation, and delivery environment. A participating deployment may be a formal digital public infrastructure, or DPI, a public programme, a cooperative platform, or another application ecosystem. This document treats AMUL, BharatVistaar, and MahaVistaar as participating deployments. Whether each is formally classified as a DPI does not change its OpenAgriNet boundary.
+A participating deployment integrates the OpenAgriNet DPG into its application, authentication, customisation, and delivery environment. A participating deployment may be a formal digital public infrastructure, or DPI, a public programme, a cooperative platform, or another application ecosystem. Its formal classification does not change its OpenAgriNet boundary.
+
+An implementer selects a deployment profile and enables only the required modules and adapters. One deployment may operate only a channel, another may also operate Experience, and another may operate all three logical layers and one or more Provider capabilities. A module that is not operated locally is consumed through its defined interface; the logical responsibility and conformance contract do not change.
+
+Person authentication is a conditional deployment integration. When a capability requires an authenticated person, the implementer enables an authentication adapter against its chosen identity system. The adapter supplies a verified deployment assertion and, when required, a Provider-scoped reference and data-use proof. Experience validates the assertion but does not become the person-identity authority or receive the person's credentials.
 
 A participating deployment may own channel applications, branding, bot identity, authentication when required, user mapping, profile and language preferences, notification subscriptions, and capture of data-use authorization. Public Advise and Observe interactions may remain anonymous. A personal Observe or Act interaction requires the authentication and authorization declared by that capability.
 
@@ -85,7 +89,7 @@ OpenAgriNet does not include:
 
 [Edit the system context](diagrams/01-system-context.excalidraw) or [open the editable architecture room](diagrams/OpenAgriNet%20architecture%20room.excalidraw).
 
-The participating deployment is a neighboring system, not a fourth OAN actor role. Its channel and authorization components call Experience APIs. They do not call the ONIX Consumer Adapter directly. After interpreting a request, Experience invokes the ONIX Consumer Adapter to search and resolve governed capabilities and to exchange the selected business message. Experience selects from the returned catalog matches. The structural diagrams use “Participating DPI” as a compact label for this participating-deployment boundary; the label does not assert that every deployment is formally a DPI.
+A participating deployment is an allocation of modules to an implementer, not a fourth OAN actor role or a fixed external system boundary. Channel, authentication, and authorization components call Experience APIs even when they are operated by the same implementer. They do not call the ONIX Consumer Adapter directly. After interpreting a request, Experience invokes the ONIX Consumer Adapter to search and resolve governed capabilities and to exchange the selected business message. Experience selects from the returned catalog matches. In the structural diagrams, “Participating DPI” represents deployment-owned channel and trust services outside Experience; it does not describe the deployment's complete operational footprint or assert that every deployment is formally a DPI.
 
 ## Domain and interaction model
 
@@ -194,7 +198,7 @@ A telephony integrator terminates the call or media channel. A telephony or medi
 | Module or feature              | Core capability                                                                                                                                      | Extension points                                                                   | Never does                                                                                          |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Channel interfaces             | Terminate HTTP, WebSocket, webhook, media-stream, callback, or assisted interactions and normalize channel semantics                                 | Channel adapter, telephony adapter, codec, speech service, delivery profile         | Does not contain agricultural logic or call a Provider-native API                                   |
-| Experience API                 | Validate a participating-deployment assertion, establish the OAN session, coordinate streaming and delivery, and enforce disclosure policy            | Assertion profile, authentication connector, session store, rate policy, streaming transport | Does not authenticate the person, own the deployment's user mapping, or decide which Provider result is true |
+| Experience API                 | Validate a participating-deployment assertion, establish the OAN session, coordinate streaming and delivery, and enforce disclosure policy            | Assertion profile and verifier, session store, rate policy, streaming transport | Does not authenticate the person, own the deployment's user mapping, or decide which Provider result is true |
 | Decision Support System        | Compose persona, interpret permitted non-personal context, plan capability use, apply moderation, use typed skills or tools, and review the response | Persona, skill, tool, model, context provider, language behavior, policy, reviewer | Does not become another layer, receive a personal payload, act as an authorization grant, or bypass ONIX |
 | ONIX Consumer Adapter          | Search catalogs, resolve a selected Provider, validate and sign protocol messages, correlate requests, transport a protected Provider payload, and verify responses | Protocol profile, signing suite, schema version, payload-protection profile, retry and correlation policy | Does not call Provider-native APIs, turn protocol mapping into domain reasoning, or expose a protected personal payload to shared tools |
 | Boundary and evidence features | Keep personal payloads out of shared tools and logs, validate authorization proof presence, minimise fields, and emit safe telemetry and audit evidence | Personal-data guard, authorization validator, retention rule, evidence exporter    | Does not store personal profiles, application references, authorization artifacts, or rejected payloads in telemetry |
@@ -484,7 +488,9 @@ These scenarios make modifiability, analyzability, testability, deployability, a
 
 ## Deployment and ownership
 
-Logical ownership is fixed by contract. Physical deployment may vary.
+Logical ownership is fixed by contract. Physical deployment is assembled from independently operable modules and may vary.
+
+An implementation manifest declares which modules are enabled locally, which adapters satisfy their required interfaces, and which capabilities are consumed as managed services. Authentication is enabled only for deployments and capabilities that require it. Omitting local authentication does not make Experience the identity provider; anonymous capabilities remain anonymous, while identity-bound capabilities require a compatible deployment assertion.
 
 ![OpenAgriNet deployment and ownership](images/06-deployment-and-ownership.svg)
 
@@ -492,6 +498,8 @@ Logical ownership is fixed by contract. Physical deployment may vary.
 
 | Deployment choice | Allowed arrangement | Boundary that must remain true |
 |---|---|---|
+| Modular deployment profile | An implementer may operate a channel only, channel plus Experience, all three logical layers, or any independently conformant Provider capability | Every enabled module retains its interface, authority, evidence, and conformance contract; omitted modules are reached through those same interfaces |
+| Conditional authentication | The implementer enables an authentication adapter against its chosen identity system when declared capabilities require person authentication | The adapter remains deployment-owned; Experience validates its assertion but does not own credentials, accounts, or user mapping |
 | Participating deployment integration | Channel clients and deployment trust services run outside OAN | Person identity, user mapping, profile, preferences, authorization capture, and personal delivery remain deployment-owned |
 | Shared Network Exchange | Registry, Discovery, governance, and network evidence may share infrastructure | Registry and Discovery retain separate contracts and authoritative state |
 | Managed Provider adapter | A reusable adapter may be hosted by the Provider, a service partner, or the Network Operator | Provider remains accountable for native mapping, fulfilment, security, evidence, and recovery |
@@ -584,7 +592,8 @@ Provider onboarding and knowledge publishing should be a companion implementatio
 | Consumer | Role that asks for and receives an outcome. Commonly a farmer |
 | Provider | Role accountable for one or more agricultural capabilities and their outcomes |
 | Network Operator | Role that governs participation and operates Network Exchange |
-| Participating deployment | External application or platform that integrates the OpenAgriNet DPG and may own channels, branding, authentication, user mapping, preferences, subscriptions, and data-use authorization. It may be a DPI, but the architecture does not assume every deployment is one |
+| Participating deployment | Implementation-specific allocation of OpenAgriNet modules and external integrations. It may operate only a channel, add Experience, operate all logical layers, or expose Provider capabilities. It may be a DPI, but the architecture does not assume every deployment is one |
+| Authentication adapter | Conditional deployment-owned integration with the implementer's identity system. It supplies a verified assertion to Experience without making OAN the person-identity authority |
 | DPI | Formal digital public infrastructure classification. A participating deployment may be a DPI; the OpenAgriNet boundary does not change with that classification |
 | DPG | Reusable public-good software, standards, schemas, and conformance assets. It is not a runtime actor or the operating authority for every deployment |
 | Experience Layer | Working name for the boundary that owns channel integration, session and conversation state, presentation, policy application, and conversion of actor intent into a standard capability interaction |
