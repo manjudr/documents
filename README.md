@@ -1,40 +1,19 @@
-# oan-internal-doc
+# OpenAgriNet architecture documentation
 
-Internal architecture documentation for the OpenAgriNet platform.
+Start with [OpenAgriNet architecture](ARCHITECTURE.md). It is the proposed target architecture for Design Council review and remains **Proposed to be reviewed with DC**.
 
 ## Contents
 
-- **[OVERVIEW.md](OVERVIEW.md)** — **start here.** The whole system in ten minutes: what it is,
-  how a question gets answered, what the tools do, how it differs from real Beckn, and the three
-  problems worth fixing first.
-
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — the full trace. How the system works today across the three deployments
-  (BharatVistaar, MahaVistaar, Amul): module map, request flow, catalog publish/discover,
-  telemetry, auth, and the gap list for re-architecting onto the current Beckn protocol.
-
-- **[UNDERSTANDING_ARCHITECTURE.md](UNDERSTANDING_ARCHITECTURE.md)** explains how the actor model and representative use cases lead to the proposed interaction model, layers, and Provider capability model.
-
-- **[PROPOSED_ARCHITECTURE.md](PROPOSED_ARCHITECTURE.md)** is the normative proposed architecture for DC review. It contains the requirements, responsibilities, boundaries, information model, and pending work.
-
-- **[HIGH_LEVEL_ARCHITECTURE.md](HIGH_LEVEL_ARCHITECTURE.md)** is the compact five-view summary of the proposed architecture: actors, design problems, principles, domain architecture, and runtime interaction.
-
-## Viewing the diagrams
-
-Both docs use [Mermaid](https://mermaid.js.org/) diagrams in ` ```mermaid ` fences.
-GitHub renders these natively — just open the file here in the browser.
-
-If you are reading it locally and see raw code instead of diagrams, your viewer lacks Mermaid support:
-
-| Viewer | How to get rendering |
+| Location | Purpose |
 |---|---|
-| VS Code | install the **Markdown Preview Mermaid Support** extension, then `Cmd+Shift+V` |
-| Obsidian / Typora / Joplin | works out of the box |
-| Any browser | paste a single diagram into [mermaid.live](https://mermaid.live) |
-| Export to PDF/PNG | `npx @mermaid-js/mermaid-cli -i ARCHITECTURE.md -o ARCHITECTURE-rendered.md` |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Current proposed target architecture, including actors, interaction model, layers, runtime flows, information boundaries, specifications, decisions, and use-case mapping |
+| [`images/`](images/) | SVG publication diagrams and high-resolution PNG copies for document tools |
+| [`diagrams/`](diagrams/) | Editable Excalidraw sources, including one architecture room containing all current structural views |
+| [`existing/`](existing/) | Evidence-backed description and overview of the existing implemented codebase |
+| [`supporting/`](supporting/) | Earlier architecture reasoning, proposal documents, and visual material retained for traceability |
 
-> Note: the macOS Finder Quick Look preview and most plain Markdown viewers do **not** render Mermaid.
+The root architecture document is the source for the proposed architecture. Material under `existing/` describes what is implemented and must not be read as the target design. Material under `supporting/` may preserve earlier terminology or decisions and is not normative.
 
-## Status
+## Editing diagrams
 
-Traced 2026-08-11. Claims are marked ✅ verified (read in code, with `file:line`),
-⚠️ inferred, or ❌ not traced — see §10 for known blind spots.
+Edit the Excalidraw source under `diagrams/`, then update the corresponding SVG and PNG under `images/`. The Markdown references SVG files; PNG files are provided for tools that do not render SVG reliably.
